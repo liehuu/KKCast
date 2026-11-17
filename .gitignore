@@ -1,0 +1,25 @@
+# 构建产物
+.build/
+build/
+dist/
+dist-dylib/
+*.ipa
+*.dylib
+
+# 测试用的临时文件
+.test_*
+_streamer_body.txt
+.verify_backup/
+
+# 解包出来的 app（含他人二进制，绝不入库）
+kkys_work/
+recon/
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+DerivedData/
+
+# 系统
+.DS_Store
+Thumbs.db

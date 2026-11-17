@@ -1,0 +1,137 @@
+name: Build KKCast dylib
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 这个工作流只做一件事：把 KKCast.dylib 编译出来并验证。
+#
+# 为什么不在这里打包 ipa：
+#   打包需要的原始 ipa 有 12MB，base64 后 15.6MB，
+#   远超 GitHub Secret 的 48KB 上限，进不了仓库也不该进
+#   （那是他人作品，仓库是公开的）。
+#   而注入 + 打包是纯 Python 逻辑，不需要 macOS 环境，
+#   所以那一步放在本机跑（scripts/build_ipa.py），
+#   CI 只交付一个经过校验的 dylib。
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── 门禁 1：源码静态契约 ────────────────────────────────
+      # 放在编译之前。这一步只要 2 秒，能在浪费 6 分钟编译之前
+      # 抓到"括号没配平 / 声明了没实现"这类纯搬运错误。
+      - name: Gate 1 - ObjC 源码结构校验
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_objc.py
+          echo ""
+          echo "--- 反向注入：证明上面的检查会失败 ---"
+          python3 scripts/selftest_objc.py
+
+      # ── 门禁 2：注入工具自检 ────────────────────────────────
+      # 注入逻辑是最容易静默出错的地方（改错一个偏移，产物依然
+      # "看起来正常"，装上去才崩），所以拿构造样本 + 真实布局
+      # 先把边界全测一遍。
+      - name: Gate 2 - 注入工具自检
+        run: |
+          set -euo pipefail
+          python3 scripts/selftest_inject.py
+
+      - name: 选择 Xcode
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      # ── 编译 ────────────────────────────────────────────────
+      - name: 编译 KKCast.dylib
+        run: |
+          set -euo pipefail
+          # 不能用 `xcodebuild ... | tee build.log | tail -40`：
+          # 管道会吞掉 xcodebuild 的退出码，编译失败了 CI 依然是绿的，
+          # 直到装到手机上才发现。所以先落文件，再单独判退出码。
+          set +e
+          xcodebuild \
+            -project KKCast.xcodeproj \
+            -scheme KKCast \
+            -configuration Release \
+            -sdk iphoneos \
+            -arch arm64 \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ENABLE_BITCODE=NO \
+            build > build.log 2>&1
+          RC=$?
+          set -e
+          echo "--- 编译输出尾部 ---"
+          tail -50 build.log
+          if [ $RC -ne 0 ]; then
+            echo "::error::xcodebuild 失败，退出码 $RC"
+            echo "--- 所有 error: 行 ---"
+            grep -n "error:" build.log | head -40 || true
+            echo "--- 所有 warning: 行 ---"
+            grep -n "warning:" build.log | head -40 || true
+            exit $RC
+          fi
+
+      - name: 定位产物
+        run: |
+          set -euo pipefail
+          DYLIB=$(find build -name 'KKCast.dylib' -type f | head -1)
+          if [ -z "$DYLIB" ]; then
+            echo "::error::没找到 KKCast.dylib"
+            find build -name '*.dylib' | head -20
+            exit 1
+          fi
+          echo "DYLIB=$DYLIB" >> "$GITHUB_ENV"
+          echo "产物: $DYLIB"
+          ls -la "$DYLIB"
+          file "$DYLIB"
+
+      # ── 门禁 3：dylib 产物校验 ──────────────────────────────
+      # 编译"成功"不等于产物可用。必须验：arm64、iOS 平台、
+      # MH_DYLIB、__mod_init_func 非空、关键类没被裁掉。
+      # 这些只能从字节读，不能信构建声明。
+      - name: Gate 3 - dylib 产物校验
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_dylib.py "$DYLIB"
+          cp "$DYLIB" dist-dylib/KKCast.dylib 2>/dev/null || {
+            mkdir -p dist-dylib
+            cp "$DYLIB" dist-dylib/KKCast.dylib
+          }
+          echo "--- 编译警告统计 ---"
+          grep -c "warning:" build.log || echo "0 warnings"
+
+      - name: 汇总
+        if: always()
+        run: |
+          {
+            echo "## KKCast dylib"
+            echo ""
+            ls -la dist-dylib/ 2>/dev/null || true
+            if [ -f dist-dylib/KKCast.dylib ]; then
+              echo ""
+              echo "sha256: \`$(shasum -a 256 dist-dylib/KKCast.dylib | cut -d' ' -f1)\`"
+              echo "size: \`$(stat -f%z dist-dylib/KKCast.dylib)\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kkcast-dylib
+          path: |
+            dist-dylib/KKCast.dylib
+            build.log
+          retention-days: 14
+          if-no-files-found: warn

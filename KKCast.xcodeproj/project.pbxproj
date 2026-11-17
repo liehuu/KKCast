@@ -1,0 +1,249 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AA0000000000000000000101 /* KKHook.m in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000001 /* KKHook.m */; };
+		AA0000000000000000000102 /* KKDLNA.m in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000002 /* KKDLNA.m */; };
+		AA0000000000000000000103 /* KKProxy.m in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000003 /* KKProxy.m */; };
+		AA0000000000000000000104 /* KKCastUI.m in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000004 /* KKCastUI.m */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		AA0000000000000000000001 /* KKHook.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KKHook.m; sourceTree = "<group>"; };
+		AA0000000000000000000002 /* KKDLNA.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KKDLNA.m; sourceTree = "<group>"; };
+		AA0000000000000000000003 /* KKProxy.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KKProxy.m; sourceTree = "<group>"; };
+		AA0000000000000000000004 /* KKCastUI.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KKCastUI.m; sourceTree = "<group>"; };
+		AA0000000000000000000005 /* KKCast.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KKCast.h; sourceTree = "<group>"; };
+		AA0000000000000000000006 /* KKCast.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = KKCast.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AA0000000000000000000201 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AA0000000000000000000301 = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000302 /* KKCast */,
+				AA0000000000000000000303 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000302 /* KKCast */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000005 /* KKCast.h */,
+				AA0000000000000000000001 /* KKHook.m */,
+				AA0000000000000000000002 /* KKDLNA.m */,
+				AA0000000000000000000003 /* KKProxy.m */,
+				AA0000000000000000000004 /* KKCastUI.m */,
+			);
+			path = KKCast;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000303 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000006 /* KKCast.dylib */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AA0000000000000000000401 /* KKCast */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000000000000000000601 /* Build configuration list for PBXNativeTarget "KKCast" */;
+			buildPhases = (
+				AA0000000000000000000501 /* Sources */,
+				AA0000000000000000000201 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KKCast;
+			productName = KKCast;
+			productReference = AA0000000000000000000006 /* KKCast.dylib */;
+			productType = "com.apple.product-type.library.dynamic";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AA0000000000000000000701 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					AA0000000000000000000401 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = AA0000000000000000000602 /* Build configuration list for PBXProject "KKCast" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = AA0000000000000000000301;
+			productRefGroup = AA0000000000000000000303 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AA0000000000000000000401 /* KKCast */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AA0000000000000000000501 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0000000000000000000101 /* KKHook.m in Sources */,
+				AA0000000000000000000102 /* KKDLNA.m in Sources */,
+				AA0000000000000000000103 /* KKProxy.m in Sources */,
+				AA0000000000000000000104 /* KKCastUI.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		AA0000000000000000000801 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = NO;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "";
+				DEAD_CODE_STRIPPING = NO;
+				DEFINES_MODULE = NO;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_BITCODE = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_WARN_UNDECLARED_SELECTOR = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				MACH_O_TYPE = mh_dylib;
+				OTHER_LDFLAGS = (
+					"-framework",
+					Foundation,
+					"-framework",
+					UIKit,
+					"-framework",
+					AVFoundation,
+					"-framework",
+					CoreGraphics,
+					"-framework",
+					CoreMedia,
+					"-framework",
+					Network,
+					"-lobjc",
+				);
+				PRODUCT_NAME = KKCast;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "";
+				INSTALL_PATH = "@executable_path/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				STRIP_INSTALLED_PRODUCT = NO;
+				STRIP_STYLE = "non-global";
+			};
+			name = Release;
+		};
+		AA0000000000000000000802 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				DEAD_CODE_STRIPPING = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				MACH_O_TYPE = mh_dylib;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = KKCast;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		AA0000000000000000000803 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				COPY_PHASE_STRIP = NO;
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_UNUSED_VARIABLE = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = iphoneos;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AA0000000000000000000804 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AA0000000000000000000601 /* Build configuration list for PBXNativeTarget "KKCast" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000801 /* Release */,
+				AA0000000000000000000802 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000000000000000000602 /* Build configuration list for PBXProject "KKCast" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000803 /* Release */,
+				AA0000000000000000000804 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AA0000000000000000000701 /* Project object */;
+}

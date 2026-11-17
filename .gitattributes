@@ -1,0 +1,18 @@
+# 全部强制 LF。
+#
+# 不设的后果：Windows 上 git 默认 core.autocrlf 会把文本文件转成 CRLF，
+# 推到 GitHub 后 CI（Linux/macOS）里跑的 `set -euo pipefail` 会变成
+# `set -euo pipefail\r`，报 "invalid option" 直接失败；
+# YAML 文件被插入 \r 还会让 GitHub 解析 workflow 时报错 ——
+# 那种错在 Actions 页面上只是"workflow 无法运行"，没有 job 日志可看，
+# 极难定位。
+* text=auto eol=lf
+
+# 二进制不要碰
+*.ipa binary
+*.dylib binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.car binary
+*.nib binary
