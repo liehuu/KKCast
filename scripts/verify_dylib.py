@@ -108,6 +108,7 @@ def main():
     off = 32
     platform = None
     has_enc = False
+    enc_detail = ""
     id_dylib = None
     deps = []
     segs = {}
@@ -131,7 +132,21 @@ def main():
         elif cmd == LC_VERSION_MIN_IPHONEOS:
             platform = 2
         elif cmd in (LC_ENCRYPTION_INFO, LC_ENCRYPTION_INFO_64):
-            has_enc = True
+            # 只认 cryptid != 0。
+            #
+            # 这里踩过假 FAIL：链接器会给任何 iOS 二进制**无条件**写一条
+            # LC_ENCRYPTION_INFO_64，cryptid=0 表示"未加密"。实测我们的
+            # dylib 里就有这条：cryptoff=16384 cryptsize=65536 cryptid=0。
+            # 早先的判据只要看到这条命令就报"误链了加密二进制"，把
+            # 完全正常的产物判成不可用 —— 判据盯的是"命令存在"，
+            # 而实际该盯的是"cryptid 是否为 0"。
+            #
+            # 字段布局（两者都是）：
+            #   0 cmd(4) 4 cmdsize(4) 8 cryptoff(4) 12 cryptsize(4) 16 cryptid(4)
+            cryptid = u32(d, off + 16)
+            has_enc = (cryptid != 0)
+            enc_detail = (f"cryptoff={u32(d, off + 8)} "
+                          f"cryptsize={u32(d, off + 12)} cryptid={cryptid}")
         elif cmd == LC_ID_DYLIB:
             noff = u32(d, off + 8)
             id_dylib = d[off + noff:off + cs].split(b"\x00")[0].decode("utf-8", "replace")
@@ -152,9 +167,10 @@ def main():
         fail(f"platform={platform} ({PLATFORMS.get(platform,'?')})，应该编译成 iOS")
 
     if has_enc:
-        fail("出现 LC_ENCRYPTION_INFO —— 说明误链了加密二进制，产物不可用")
+        fail(f"LC_ENCRYPTION_INFO 的 cryptid != 0（{enc_detail}）"
+             f"→ 产物被加密，注入后 dyld 无法解密")
     else:
-        ok("无加密段")
+        ok(f"未加密（cryptid=0{'，有 LC_ENCRYPTION_INFO 但表示明文' if enc_detail else ''}）")
 
     if id_dylib:
         ok(f"LC_ID_DYLIB: {id_dylib}")
@@ -168,36 +184,90 @@ def main():
     # 这段原本写成 `if "__DATA" in segs:` 包起来，是个**永真检查**：
     # 一旦段名不是精确的 "__DATA"（比如只有 __DATA_CONST，或者链接器
     # 改了布局），大括号里的全部逻辑静默跳过，一条都不报，最后仍然
-    # 输出 PASS。而这一项恰恰决定"kksInstallHooks 会不会被调用"——
+    # 输出 PASS。而这一项恰恰决定"kkInstallHooks 会不会被调用"——
     # 它没跑就等于没验，注入上去必然完全没反应。
-    # 所以改成：遍历所有段找 __mod_init_func，找不到就 FAIL。
+    #
+    # 更关键的是**判据本身过时了**。实测 Xcode 16.4 / iphoneos 18.5 SDK
+    # 编出来的 dylib 里根本没有 __DATA,__mod_init_func 这个节，constructor
+    # 被放进了 __TEXT,__init_offsets（配合 LC_DYLD_CHAINED_FIXUPS）。
+    # 证据（真实产物 dist-ci 里那份）：
+    #   __TEXT,__init_offsets  addr=0xedc0 size=4  flags=0x16
+    #   raw = 78 40 00 00 → int32 16504 = 0x4078
+    #   __TEXT,__text          addr=0x4000
+    # 0x4078 落在 __text 内，正是一个函数入口。也就是说 constructor
+    # **确实生成了**，只是换了节名。旧判据只认 __mod_init_func，
+    # 于是把"完全正常"判成"constructor 没生成"——这是假 FAIL，
+    # 比漏报更误导人（会让人去改源码，而源码本来就是对的）。
+    #
+    # 所以两种布局都要认，并且区分"节不存在"与"节存在但为空"。
+    MODINIT_SECTIONS = ("__mod_init_func", "__init_offsets")
+
+    def scan_section(sect_name):
+        """返回 (found, size, seg_name, address, fileoff)。"""
+        for seg_name, (filesize, nsects, coff) in segs.items():
+            if nsects == 0:
+                continue
+            o = coff + 72  # segment_command_64 头 72 字节，之后是 section_64 数组
+            for _ in range(nsects):
+                if o + 80 > len(d):
+                    break
+                sname = d[o:o + 16].split(b"\x00")[0].decode("ascii", "replace")
+                if sname == sect_name:
+                    addr = u64(d, o + 32)
+                    size = u64(d, o + 40)
+                    foff = u32(d, o + 48)
+                    return True, size, seg_name, addr, foff
+                o += 80
+        return False, 0, None, 0, 0
+
     found_modinit = False
     mod_init_size = None
     mod_init_seg = None
-    for seg_name, (filesize, nsects, coff) in segs.items():
-        if nsects == 0:
-            continue
-        o = coff + 72  # segment_command_64 头 72 字节，之后是 section_64 数组
-        for _ in range(nsects):
-            if o + 80 > len(d):
-                break
-            sname = d[o:o + 16].split(b"\x00")[0].decode("ascii", "replace")
-            size = u64(d, o + 40)  # section_64.size 在偏移 40
-            if sname == "__mod_init_func":
-                found_modinit = True
-                mod_init_size = size
-                mod_init_seg = seg_name
-            o += 80
+    mod_init_sect = None
+
+    for candidate in MODINIT_SECTIONS:
+        f, sz, sg, addr, foff = scan_section(candidate)
+        if f:
+            found_modinit = True
+            mod_init_size = sz
+            mod_init_seg = sg
+            mod_init_sect = candidate
+            # 对 __init_offsets 再做一层实质校验：里面的每个 int32 应该是
+            # 相对 __TEXT 的偏移，落在 __TEXT 范围内。全零或越界说明
+            # 这个节只是占位，constructor 实际没挂上。
+            if candidate == "__init_offsets" and sz >= 4:
+                text_addr = 0
+                for sgn, (fs, ns, co) in segs.items():
+                    if sgn == "__TEXT":
+                        text_addr = u64(d, co + 24)   # vmaddr
+                        text_vmsize = u64(d, co + 32)  # vmsize
+                        break
+                bad_entries = 0
+                entries = sz // 4
+                for j in range(entries):
+                    pos = foff + j * 4
+                    if pos + 4 > len(d):
+                        bad_entries += 1
+                        continue
+                    v = u32(d, pos)
+                    if v == 0 or not (text_addr <= text_addr + v < text_addr + text_vmsize):
+                        bad_entries += 1
+                if bad_entries:
+                    fail(f"__init_offsets 有 {bad_entries}/{entries} 个条目指向 "
+                         f"__TEXT 之外或为 0 → constructor 没真正挂上")
+                else:
+                    ok(f"__init_offsets 有 {entries} 个有效条目，均落在 __TEXT 内")
+            break
 
     if found_modinit and mod_init_size and mod_init_size > 0:
-        ok(f"__mod_init_func 有内容（{mod_init_size} 字节，在 {mod_init_seg}）"
+        ok(f"{mod_init_sect} 有内容（{mod_init_size} 字节，在 {mod_init_seg}）"
            f"→ constructor 会执行")
     elif found_modinit:
-        fail(f"__mod_init_func 存在但大小为 {mod_init_size} → kkInstallHooks "
+        fail(f"{mod_init_sect} 存在但大小为 {mod_init_size} → kkInstallHooks "
              f"不会被调用（constructor 被 dead-strip 了？检查 DEAD_CODE_STRIPPING）")
     else:
-        fail("整个二进制里没有 __mod_init_func 段 → constructor 完全没生成，"
-             "注入后不会有任何反应")
+        fail("既没有 __mod_init_func 也没有 __init_offsets → constructor "
+             "完全没生成，注入后不会有任何反应")
 
     # 依赖里不能有 Swift 运行时（我们是纯 ObjC，多链 Swift 会拖慢启动
     # 并可能和宿主的 Swift 版本冲突）

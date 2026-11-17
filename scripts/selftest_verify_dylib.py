@@ -18,14 +18,23 @@
   FAIL 都可能只是校验器整体坏掉，属于假 FAIL。
 
 覆盖：
-  G1 基线（合法 dylib）            → 期望 PASS
+  G1 基线（合法 dylib，旧布局 __DATA,__mod_init_func）  → 期望 PASS
+  G1b 基线确实跑到了 constructor 检查（防空测）
   G2 filetype 改成 MH_DSYM(10)     → 期望 FAIL 且只报 1 条（立刻退出）
-  G3 删掉 __mod_init_func 段       → 期望 FAIL（不能静默跳过）
-  G4 __mod_init_func 段大小为 0    → 期望 FAIL
-  G5 把 __mod_init_func 放到 __DATA_CONST 里 → 期望 PASS（段名不该写死）
+  G3 完全没有 constructor 节       → 期望 FAIL（不能静默跳过）
+  G4 constructor 节大小为 0        → 期望 FAIL
+  G5 constructor 在 __DATA_CONST 里 → 期望 PASS（段名不该写死）
   G6 cputype 改成 x86_64           → 期望 FAIL
-  G7 加一条 LC_ENCRYPTION_INFO     → 期望 FAIL
+  G7a cryptid=0（新布局的常态）     → 期望 PASS（不能因为命令存在就报错）
+  G7b cryptid=1（真的加密了）       → 期望 FAIL
   G8 删掉 LC_ID_DYLIB              → 期望 FAIL
+  G9 __init_offsets 新布局，条目有效 → 期望 PASS
+  G10 __init_offsets 条目为 0       → 期望 FAIL
+  G11 __init_offsets 条目越界       → 期望 FAIL
+
+  G7a/G9 这两个 PASS 用例是必须的：它们对应的判据曾经都写成"只要
+  看到特征就报错"，把完全正常的产物判成不可用。如果只保留 FAIL 用例，
+  就会在"修掉漏报"的同时引入误报，而误报同样会让人去改本来正确的代码。
 """
 
 import os
@@ -94,37 +103,71 @@ def seg(name, vmaddr, vmsize, fileoff, filesize, sections):
 
 def build(seg_name_for_modinit="__DATA", modinit_size=8,
           filetype=6, cputype=CPU_TYPE_ARM64, with_id_dylib=True,
-          with_encryption=False):
+          cryptid=None, new_layout=False, init_offset_value=None):
     """构造一个布局自洽的最小 MH_DYLIB。
 
     关键：所有段/节的 fileoff 必须落在文件内，否则校验器会先报越界，
     后续判定就测不到了。这里用真实的文件偏移排布。
+
+    两套布局都要能造，因为真实产物用的是新布局：
+      new_layout=False → 旧布局：__DATA,__mod_init_func（8 字节指针数组）
+      new_layout=True  → 新布局：__TEXT,__init_offsets（int32 相对偏移）
+    实测 Xcode 16.4 + chained fixups 编出来的是新布局，只认旧布局的
+    判据会把正常产物判死。
+
+    cryptid: None=不发 LC_ENCRYPTION_INFO；0=发但明文；1=真的加密。
     """
     TEXT_OFF = 0x1000
     TEXT_SZ = 0x400
     DATA_OFF = 0x2000
     DATA_SZ = 0x400
 
-    # 先算 load command 总长，才能定 __TEXT 的起始（这里固定 0x1000，
-    # 只要命令区不超过它就是合法的）
-    text_sec = sec("__text", 0x1000, TEXT_SZ, TEXT_OFF)
-    modinit_sec = sec("__mod_init_func", 0x2000, modinit_size, DATA_OFF)
-    const_sec = sec("__const", 0x2000, modinit_size, DATA_OFF)
+    TEXT_VMADDR = 0x1000
+    DATA_VMADDR = 0x2000
 
-    segs = [
-        seg("__TEXT", 0x1000, 0x1000, 0, TEXT_OFF + TEXT_SZ, [text_sec]),
-    ]
-    if seg_name_for_modinit == "__DATA_CONST":
-        segs.append(seg("__DATA_CONST", 0x2000, 0x1000, DATA_OFF,
-                        DATA_OFF + DATA_SZ, [modinit_sec, const_sec]))
-        segs.append(seg("__DATA", 0x3000, 0x1000, 0, 0, []))
-    elif seg_name_for_modinit is None:
-        # 完全没有 __mod_init_func：__DATA 里只放一个无关的节
-        segs.append(seg("__DATA", 0x2000, 0x1000, DATA_OFF,
-                        DATA_OFF + DATA_SZ, [const_sec]))
+    text_sec = sec("__text", TEXT_VMADDR, TEXT_SZ, TEXT_OFF)
+
+    if new_layout:
+        # __init_offsets 的条目是「相对 __TEXT 的 int32 偏移」。
+        # 给个默认值让它落在 __text 里（偏移 0x20 → vmaddr 0x1020）。
+        n_entries = max(1, modinit_size // 4)
+        vals = []
+        for j in range(n_entries):
+            if init_offset_value is not None:
+                vals.append(init_offset_value)
+            else:
+                vals.append(0x20 + j * 4)
+        offsets_blob = b"".join(struct.pack("<I", v & 0xFFFFFFFF) for v in vals)
+        if seg_name_for_modinit is None:
+            text_sections = [text_sec]
+        else:
+            text_sections = [text_sec, sec("__init_offsets",
+                                           TEXT_VMADDR + 0x200,
+                                           len(offsets_blob),
+                                           TEXT_OFF + 0x200)]
+        segs = [seg("__TEXT", TEXT_VMADDR, 0x1000, 0, TEXT_OFF + TEXT_SZ,
+                    text_sections)]
+        segs.append(seg("__DATA", DATA_VMADDR, 0x1000, DATA_OFF,
+                        DATA_OFF + DATA_SZ, []))
+        const_sec = None
+        modinit_sec = None
     else:
-        segs.append(seg("__DATA", 0x2000, 0x1000, DATA_OFF,
-                        DATA_OFF + DATA_SZ, [modinit_sec]))
+        offsets_blob = None
+        modinit_sec = sec("__mod_init_func", DATA_VMADDR, modinit_size, DATA_OFF)
+        const_sec = sec("__const", DATA_VMADDR, modinit_size, DATA_OFF)
+        segs = [seg("__TEXT", TEXT_VMADDR, 0x1000, 0, TEXT_OFF + TEXT_SZ,
+                    [text_sec])]
+        if seg_name_for_modinit == "__DATA_CONST":
+            segs.append(seg("__DATA_CONST", DATA_VMADDR, 0x1000, DATA_OFF,
+                            DATA_OFF + DATA_SZ, [modinit_sec, const_sec]))
+            segs.append(seg("__DATA", 0x3000, 0x1000, 0, 0, []))
+        elif seg_name_for_modinit is None:
+            # 完全没有 constructor 节：__DATA 里只放一个无关的节
+            segs.append(seg("__DATA", DATA_VMADDR, 0x1000, DATA_OFF,
+                            DATA_OFF + DATA_SZ, [const_sec]))
+        else:
+            segs.append(seg("__DATA", DATA_VMADDR, 0x1000, DATA_OFF,
+                            DATA_OFF + DATA_SZ, [modinit_sec]))
 
     cmds = list(segs)
 
@@ -140,9 +183,10 @@ def build(seg_name_for_modinit="__DATA", modinit_size=8,
         b += b"\x00" * (((cs + 7) // 8 * 8) - cs)
         cmds.append(b)
 
-    if with_encryption:
+    if cryptid is not None:
+        # cryptoff/cryptsize 指向 __TEXT 内部，cryptid 决定是否加密。
         cmds.append(p32(LC_ENCRYPTION_INFO_64) + p32(24) + p32(TEXT_OFF)
-                    + p32(TEXT_SZ) + p32(0) + p32(0))
+                    + p32(TEXT_SZ) + p32(cryptid) + p32(0))
 
     body = b"".join(cmds)
     sizeofcmds = len(body)
@@ -168,6 +212,13 @@ def build(seg_name_for_modinit="__DATA", modinit_size=8,
     # 填一点内容，让 __mod_init_func 的 offset 指向真实字节
     for i in range(DATA_OFF, min(DATA_OFF + 8, total)):
         buf[i] = 0xAB
+
+    # 新布局：__init_offsets 的内容必须真的写进去，否则校验器读到全零
+    # 会判"条目无效"，基线就 FAIL 了，测不到别的项。
+    if offsets_blob is not None:
+        pos = TEXT_OFF + 0x200
+        buf[pos:pos + len(offsets_blob)] = offsets_blob
+
     return bytes(buf)
 
 
@@ -209,36 +260,56 @@ def main():
     print("verify_dylib.py 反向注入自检")
     print("=" * 62)
 
-    print("\n--- G1 基线（合法 dylib） ---")
+    print("\n--- G1 基线（旧布局 __DATA,__mod_init_func） ---")
     out = check("G1 基线", build(), expect_pass=True)
-    # 基线必须真的跑到 __mod_init_func 那一条，否则下面的 G3/G4 是空测
+    # 基线必须真的跑到 constructor 那一条，否则下面的 G3/G4 是空测
     if "__mod_init_func 有内容" not in out:
-        rec("G1b 基线覆盖 __mod_init_func", False,
-            "基线没跑到 __mod_init_func 检查 —— G3/G4 测的是不存在的路径")
+        rec("G1b 基线覆盖 constructor 检查", False,
+            "基线没跑到 constructor 检查 —— G3/G4 测的是不存在的路径")
     else:
-        rec("G1b 基线覆盖 __mod_init_func", True, "基线确实检查了 __mod_init_func")
+        rec("G1b 基线覆盖 constructor 检查", True, "基线确实检查了 __mod_init_func")
 
     print("\n--- G2 filetype=MH_DSYM(10)：必须立刻退出 ---")
     check("G2 dSYM 文件", build(filetype=10), expect_pass=False, expect_fail_count=1)
 
-    print("\n--- G3 完全没有 __mod_init_func：不能静默跳过 ---")
-    check("G3 缺 mod_init", build(seg_name_for_modinit=None), expect_pass=False)
+    print("\n--- G3 完全没有 constructor 节：不能静默跳过 ---")
+    check("G3 缺 constructor 节", build(seg_name_for_modinit=None), expect_pass=False)
 
-    print("\n--- G4 __mod_init_func 大小为 0 ---")
+    print("\n--- G4 constructor 节大小为 0 ---")
     check("G4 size=0", build(modinit_size=0), expect_pass=False)
 
-    print("\n--- G5 __mod_init_func 在 __DATA_CONST：段名不该写死 ---")
+    print("\n--- G5 constructor 在 __DATA_CONST：段名不该写死 ---")
     check("G5 在 __DATA_CONST", build(seg_name_for_modinit="__DATA_CONST"),
           expect_pass=True)
 
     print("\n--- G6 cputype=x86_64 ---")
     check("G6 x86_64", build(cputype=CPU_TYPE_X86_64), expect_pass=False)
 
-    print("\n--- G7 有 LC_ENCRYPTION_INFO ---")
-    check("G7 加密段", build(with_encryption=True), expect_pass=False)
+    print("\n--- G7a cryptid=0（新布局常态，不能报错） ---")
+    check("G7a cryptid=0", build(cryptid=0), expect_pass=True)
+
+    print("\n--- G7b cryptid=1（真的加密了） ---")
+    check("G7b cryptid=1", build(cryptid=1), expect_pass=False)
 
     print("\n--- G8 没有 LC_ID_DYLIB ---")
     check("G8 缺 ID_DYLIB", build(with_id_dylib=False), expect_pass=False)
+
+    print("\n--- G9 新布局 __TEXT,__init_offsets（真实产物的布局） ---")
+    out = check("G9 __init_offsets 有效", build(new_layout=True, modinit_size=4),
+                expect_pass=True)
+    if "__init_offsets 有内容" not in out:
+        rec("G9b 基线覆盖 __init_offsets", False,
+            "没走到 __init_offsets 判定 —— G10/G11 是空测")
+    else:
+        rec("G9b 基线覆盖 __init_offsets", True, "确实走了 __init_offsets 判定")
+
+    print("\n--- G10 __init_offsets 条目为 0（占位但没挂函数） ---")
+    check("G10 条目为 0", build(new_layout=True, modinit_size=4,
+                                init_offset_value=0), expect_pass=False)
+
+    print("\n--- G11 __init_offsets 条目越界 ---")
+    check("G11 条目越界", build(new_layout=True, modinit_size=4,
+                                init_offset_value=0x7000), expect_pass=False)
 
     print()
     print("=" * 62)
