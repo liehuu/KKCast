@@ -92,7 +92,17 @@ def main():
     if filetype == MH_DYLIB:
         ok("filetype=MH_DYLIB(6)")
     else:
-        fail(f"filetype={filetype}，应该是 6(MH_DYLIB)")
+        # 这里必须**立刻退出**，不能继续往下解析。
+        # 教训：dSYM 里的 DWARF 文件也叫 KKCast.dylib，filetype 是
+        # MH_DSYM(10)，但它的 load command 结构完全合法，能一路解析到底，
+        # 于是后面会连续报"没有 LC_ID_DYLIB""__mod_init_func 为空"——
+        # 三条失败信息一起出现，看起来像编译把 dylib 编坏了，实际只是
+        # 拿错了文件。root cause 只有一个，不该被三条症状盖住。
+        fail(f"filetype={filetype}，应该是 6(MH_DYLIB)；"
+             f"若是 10 说明拿到的是 dSYM 里的符号文件，不是 dylib 本体")
+        print()
+        print(f"结论：FAIL（{len(FAIL)} 项，filetype 不对，后续检查无意义）")
+        return 1
 
     # 遍历 load command
     off = 32
@@ -154,21 +164,40 @@ def main():
         fail("没有 LC_ID_DYLIB，不是合法 dylib")
 
     # __mod_init_func 必须有内容 —— 我们的 hook 靠 constructor 安装
-    if "__DATA" in segs:
-        filesize, nsects, coff = segs["__DATA"]
-        found_modinit = False
-        o = coff + 72
+    #
+    # 这段原本写成 `if "__DATA" in segs:` 包起来，是个**永真检查**：
+    # 一旦段名不是精确的 "__DATA"（比如只有 __DATA_CONST，或者链接器
+    # 改了布局），大括号里的全部逻辑静默跳过，一条都不报，最后仍然
+    # 输出 PASS。而这一项恰恰决定"kksInstallHooks 会不会被调用"——
+    # 它没跑就等于没验，注入上去必然完全没反应。
+    # 所以改成：遍历所有段找 __mod_init_func，找不到就 FAIL。
+    found_modinit = False
+    mod_init_size = None
+    mod_init_seg = None
+    for seg_name, (filesize, nsects, coff) in segs.items():
+        if nsects == 0:
+            continue
+        o = coff + 72  # segment_command_64 头 72 字节，之后是 section_64 数组
         for _ in range(nsects):
+            if o + 80 > len(d):
+                break
             sname = d[o:o + 16].split(b"\x00")[0].decode("ascii", "replace")
-            size = u64(d, o + 40)
+            size = u64(d, o + 40)  # section_64.size 在偏移 40
             if sname == "__mod_init_func":
                 found_modinit = True
                 mod_init_size = size
+                mod_init_seg = seg_name
             o += 80
-        if found_modinit and mod_init_size and mod_init_size > 0:
-            ok(f"__mod_init_func 有内容（{mod_init_size} 字节）→ constructor 会执行")
-        else:
-            fail("__mod_init_func 为空 → kkInstallHooks 不会被调用，注入后完全没反应")
+
+    if found_modinit and mod_init_size and mod_init_size > 0:
+        ok(f"__mod_init_func 有内容（{mod_init_size} 字节，在 {mod_init_seg}）"
+           f"→ constructor 会执行")
+    elif found_modinit:
+        fail(f"__mod_init_func 存在但大小为 {mod_init_size} → kkInstallHooks "
+             f"不会被调用（constructor 被 dead-strip 了？检查 DEAD_CODE_STRIPPING）")
+    else:
+        fail("整个二进制里没有 __mod_init_func 段 → constructor 完全没生成，"
+             "注入后不会有任何反应")
 
     # 依赖里不能有 Swift 运行时（我们是纯 ObjC，多链 Swift 会拖慢启动
     # 并可能和宿主的 Swift 版本冲突）

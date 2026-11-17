@@ -111,24 +111,34 @@ jobs:
       - name: 定位产物
         run: |
           set -euo pipefail
-          # Xcode 给 dynamic library 默认加 "lib" 前缀（libKKCast.dylib）。
-          # 我们在 pbxproj 里设了 EXECUTABLE_PREFIX="" 来关掉它，但这里仍然
-          # 兼容两种名字 —— 因为下游（build_ipa.py / verify_dylib.py /
-          # verify_ipa.py）全都硬编码要求文件名恰好是 KKCast.dylib，
-          # 一旦这里拿错名字，产出的 ipa 会在真机上 dyld 找不到镜像而闪退。
-          DYLIB=$(find build -name 'KKCast.dylib' -type f | head -1)
-          if [ -z "$DYLIB" ]; then
-            echo "⚠️  没找到 KKCast.dylib，找带 lib 前缀的"
-            find build -name '*.dylib' -type f | head -20
-            DYLIB=$(find build -name 'libKKCast.dylib' -type f | head -1)
+          # 这里踩过一个坑，记下来：
+          # `find build -name 'KKCast.dylib' | head -1` 会匹配到**两个**文件，
+          #   1) .../Release-iphoneos/KKCast.dylib                  ← 真正的 dylib
+          #   2) .../KKCast.dylib.dSYM/Contents/Resources/DWARF/KKCast.dylib
+          #                                                          ← 调试符号
+          # dSYM 内部那个文件**也叫 KKCast.dylib**，但它的 filetype 是
+          # MH_DSYM(10)，不是 MH_DYLIB(6)。按名字排序取第一个拿到的是符号
+          # 文件，表现为 Gate 3 报 "filetype=10"、"没有 LC_ID_DYLIB"、
+          # "__mod_init_func 为空" —— 三条一起报，看起来像编译出了问题，
+          # 实际是取错了文件。
+          #
+          # 所以：不靠排序碰运气。先走确切的产物路径，再按 filetype 兜底。
+          PROD="build/Build/Products/Release-iphoneos/KKCast.dylib"
+          DYLIB=""
+          if [ -f "$PROD" ]; then
+            DYLIB="$PROD"
+            echo "命中确切产物路径: $DYLIB"
+          else
+            echo "确切路径不存在，回退 find（排除 dSYM）"
+            DYLIB=$(find build -name 'KKCast.dylib' -type f \
+                    -not -path '*.dSYM/*' | head -1)
           fi
           if [ -z "$DYLIB" ]; then
-            echo "::error::没找到 KKCast.dylib（也没有 libKKCast.dylib）"
-            find build -type f \( -name '*.dylib' -o -perm -111 \) | head -20
+            echo "::error::没找到 KKCast.dylib"
+            find build -type f -name '*.dylib' | head -20
             exit 1
           fi
           mkdir -p dist-dylib
-          # 无条件重命名成 KKCast.dylib，保证下游拿到的一定是这个名字。
           cp "$DYLIB" dist-dylib/KKCast.dylib
           echo "DYLIB=dist-dylib/KKCast.dylib" >> "$GITHUB_ENV"
           echo "源产物: $DYLIB"
@@ -145,6 +155,15 @@ jobs:
           # $DYLIB 已在「定位产物」步骤里统一成 dist-dylib/KKCast.dylib，
           # 所以这里直接校验它，不需要再拷一次。
           python3 scripts/verify_dylib.py "$DYLIB"
+
+          # 证明上面这个校验器**真的会失败**。
+          # 不加这一步的话，verify_dylib 里任何一处写成永真判断
+          # （例如曾经那个 `if "__DATA" in segs:` 把整段检查包起来），
+          # CI 都会持续绿着，直到 dylib 装到手机上没反应才发现。
+          echo ""
+          echo "--- 反向注入：证明 Gate 3 会失败 ---"
+          python3 scripts/selftest_verify_dylib.py
+
           echo "--- 编译警告统计 ---"
           grep -c "warning:" build.log || echo "0 warnings"
 
