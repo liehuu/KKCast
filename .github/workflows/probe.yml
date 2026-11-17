@@ -1,0 +1,37 @@
+name: probe runners
+
+# 临时探测：确认这个账号上哪些 runner label 真的能被调度。
+# 背景：run #1 的 job 在 1 秒内被 cancelled，steps=0、runner_name 为空，
+# check-run annotation 写的是
+#   The configuration 'macos-14-arm64-us-default' is not supported
+# 这是调度层拒绝，不是编译失败，也不是 YAML 解析失败。
+# ubuntu-latest 作为对照组：如果它也取消，说明是账号级 Actions 问题，
+# 而不是 macOS 镜像缺失。
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - macos-13
+          - macos-14
+          - macos-15
+          - macos-14-large
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: whoami
+        run: |
+          echo "label=${{ matrix.os }}"
+          uname -a || true
+          sw_vers || true
+          if command -v xcodebuild >/dev/null 2>&1; then
+            xcodebuild -version || true
+          else
+            echo "no xcodebuild"
+          fi

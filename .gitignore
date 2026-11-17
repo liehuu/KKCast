@@ -23,3 +23,6 @@ DerivedData/
 # 系统
 .DS_Store
 Thumbs.db
+
+# 凭据（绝不能入库）
+.ghtok
