@@ -159,6 +159,7 @@
 					"-lobjc",
 				);
 				PRODUCT_NAME = KKCast;
+				EXECUTABLE_PREFIX = "";
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -185,6 +186,7 @@
 				MACH_O_TYPE = mh_dylib;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = KKCast;
+				EXECUTABLE_PREFIX = "";
 				SKIP_INSTALL = YES;
 			};
 			name = Debug;
