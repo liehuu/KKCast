@@ -215,3 +215,66 @@ python scripts/build_ipa.py \
 - **电视兼容性取决于电视**。老款电视对 `DIDL-Lite` 元数据挑剔，
   `protocolInfo` 里的 MIME 不对会拒绝加载。代码里按 `.m3u8` / `.mp4`
   给的是常见值。
+---
+
+## 交付记录（2026-11-17）
+
+### 产物
+
+| 项目 | 值 |
+|---|---|
+| IPA | `dist/kkys-dlna.ipa` |
+| 大小 | 12,259,123 字节 |
+| dylib | 173,976 字节，sha256 `451184cb…1dbd` |
+| 编译环境 | Xcode 16.4 / iPhoneOS 18.5 SDK / macos-15 runner |
+| CI | run #5 全绿（Gate 1/2/3） |
+
+校验：`verify_ipa.py` 16 项全 PASS；`selftest_verify_ipa.py` 9/9 反向通过。
+
+### 三个真实缺陷（都曾静默通过检查）
+
+**1. 产物定位取到了 dSYM**
+`find build -name 'KKCast.dylib'` 会同时匹配到
+`.../Release-iphoneos/KKCast.dylib` 和
+`.../KKCast.dylib.dSYM/Contents/Resources/DWARF/KKCast.dylib`。
+后者 `filetype=MH_DSYM(10)`。按排序取第一个拿到的是符号文件，
+Gate 3 于是连报三条失败（filetype / 缺 LC_ID_DYLIB / 无 init），
+看起来像编译把 dylib 编坏了。修法：走确切产物路径，`find` 时排除 `*.dSYM/*`。
+
+**2. `verify_dylib.py` 有两处永真检查**
+- `if "__DATA" in segs:` 把整段 `__mod_init_func` 检查包住。段名一变
+  整段静默跳过，仍然输出 PASS。
+- 判据本身也过时：Xcode 16.4 把 constructor 放进
+  `__TEXT,__init_offsets`（int32 相对偏移），不再用
+  `__DATA,__mod_init_func`。真实产物里 `__init_offsets` 只有 4 字节，
+  值 `0x4078`，落在 `__TEXT.__text`（addr 0x4000）内，是正确的函数入口。
+  只认旧节名会把正常产物判成"constructor 没生成"，属于假 FAIL。
+
+**3. `LC_ENCRYPTION_INFO_64` 的 cryptid=0 不是加密**
+链接器给任何 iOS 二进制都无条件写这条命令。真实产物：
+`cryptoff=16384 cryptsize=65536 cryptid=0` —— 明文。
+早先的判据"看到这条命令就报错"是假 FAIL。正确判据是 `cryptid != 0`。
+
+### 第四个缺陷：zip 重打包丢了 exec 位（最容易漏）
+
+`z.write()` 在 Windows 上不保留 Unix 权限（NTFS 没有 Unix mode），
+所以第一版 IPA 里**所有条目都是 `0o666`**——主二进制和 dylib 都没有
+执行权限。表现是"装上了，点开闪退"，崩溃日志里看不出任何跟权限
+有关的线索。
+
+修法：以原 IPA 同名条目的 `external_attr` 为准；新加的 dylib 用 `0o755`；
+目录条目一并补回（原包首条是 `Payload/`）。
+
+`verify_ipa.py` 已把"可执行位"和"首条目为 `Payload/`"加成硬判定。
+
+### 签名说明
+
+产出的 IPA **未签名**，`_CodeSignature` 已移除。原因：注入改动了
+主二进制的 load command，原签名必然失效；重签需要 Apple 开发者证书。
+
+TrollStore 装未签名 IPA 时会自己补签（ad-hoc），这也是之前
+`UnCast.tipa` 直接装进 tvOS 的同一条路径。
+
+但**保留原作者 `embedded.mobileprovision`**（TeamID `FR56Z543H2`，
+2027-01-01 到期）。TrollStore 用它取 entitlements；删掉反而可能
+让 `NSLocalNetworkUsageDescription` 权限弹窗不出现。

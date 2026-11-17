@@ -51,6 +51,9 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/selftest_inject.py
+          echo ""
+          echo "--- 证明 verify_dylib 会失败 ---"
+          python3 scripts/selftest_verify_dylib.py
 
       - name: 选择 Xcode
         run: |

@@ -187,10 +187,40 @@ def main():
     else:
         ok("_CodeSignature 已清理")
 
+    # H. Unix 权限位：可执行文件必须有 exec 位
+    #
+    # 这一项曾经被漏掉，代价是一次完整的错交付：`z.write()` 在 Windows
+    # 上不保留 exec 位（NTFS 没有 Unix mode），所有条目都写成 0o666。
+    # 表现是"装上了，点开闪退"，崩溃日志里没有任何跟权限有关的线索，
+    # 极难定位。所以必须从 zip 的 external_attr 读，不能看本地文件属性。
+    def mode_of(name):
+        i = z.getinfo(name)
+        return (i.external_attr >> 16) & 0xFFFF
+
+    exe_arc = f"{app_arc}/{exe_name}"
+    for must_exec in (exe_arc, dylibs[0]):
+        if must_exec not in names:
+            fail(f"缺文件: {must_exec}")
+            continue
+        m = mode_of(must_exec)
+        if m & 0o111:
+            ok(f"可执行位正确: {must_exec} ({oct(m)})")
+        else:
+            fail(f"{must_exec} 权限是 {oct(m)}，没有 exec 位 —— "
+                 f"安装后点开必闪退（zip 重打包丢了 Unix mode）")
+
+    # 首条必须是 Payload/，否则部分安装器（含老版 TrollStore）解包失败
+    first = z.infolist()[0].filename
+    if first == "Payload/":
+        ok("首条目为 Payload/")
+    else:
+        fail(f"首条目是 {first}，应为 Payload/")
+
     # 附加：确认原有资源没被破坏（防止解包/重打包丢文件）
     must_keep = [
         f"{app_arc}/Assets.car",
         f"{app_arc}/PkgInfo",
+        f"{app_arc}/embedded.mobileprovision",
     ]
     for m in must_keep:
         if m in names:

@@ -146,20 +146,113 @@ def remove_codesig(app_dir):
         log("已删除 _CodeSignature（旧签名对改动后的内容无效）")
 
 
-def repack(unpacked, out_ipa):
+def repack(unpacked, out_ipa, src_ipa=None):
+    """重打包成 ipa。
+
+    这里有两个必须继承原包的属性，否则产出的 ipa 装不上或装上就崩：
+
+    1. **Unix 权限位**。`z.write()` 在 Windows 上无法保留 exec 位
+       （NTFS 的 ACL 和 Unix mode 不是一回事），实测所有条目都写成
+       0o666 —— 主二进制和 dylib 全部没有执行权限。iOS 安装时
+       installd 会按该位决定是否 chmod +x，丢掉 exec 位的结果是
+       "装上了，点开闪退"，而崩溃日志里看不出任何跟权限有关的线索。
+
+       处理方式：以原 ipa 里同名条目的 external_attr 为准；
+       原包里没有的（我们新加的 dylib）按可执行文件写 0o755。
+
+    2. **目录条目**。原包第一条是 `Payload/`，且 SwiftSupport 等
+       目录都有显式条目。丢掉目录条目后某些安装器（含 TrollStore 的
+       老版本）解包会失败。
+
+    压缩方式也按原条目继承：二进制用 STORED、其余用 DEFLATED，
+    这样体积不会因为把已压缩的二进制再压一遍而变大。
+    """
     if os.path.exists(out_ipa):
         os.remove(out_ipa)
 
-    # 用 ZIP_DEFLATED，但二进制本身已压缩过，用 STORED 更快也更小概率出错。
-    # 这里统一 DEFLATED：iOS 安装器两种都认。
+    # 收集原包的元信息：路径 -> (external_attr, compress_type)
+    meta = {}
+    if src_ipa and os.path.exists(src_ipa):
+        with zipfile.ZipFile(src_ipa) as zs:
+            for i in zs.infolist():
+                meta[i.filename] = (i.external_attr, i.compress_type)
+
+    # 哪些路径应该是可执行的
+    def is_executable(arc):
+        base = arc.rsplit("/", 1)[-1]
+        if arc.endswith(".dylib") or arc.startswith("SwiftSupport/"):
+            return True
+        # 主二进制：Payload/Xxx.app/Xxx（深度 3 且无扩展名）
+        parts = arc.split("/")
+        if len(parts) == 3 and parts[0] == "Payload" and \
+                parts[1].endswith(".app") and "." not in base:
+            return True
+        return False
+
+    written = 0
     with zipfile.ZipFile(out_ipa, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+        # 先补目录条目。原包有就原样继承，没有就按 0o755 造。
+        dirs = set()
         for dirpath, dirnames, filenames in os.walk(unpacked):
-            for fn in filenames:
+            rel = os.path.relpath(dirpath, unpacked).replace(os.sep, "/")
+            if rel == ".":
+                continue
+            dirs.add(rel + "/")
+        # 原包里出现过的目录（包括空的）也补上。
+        # 但必须跳过已经不存在的目录 —— 最典型的是 _CodeSignature/：
+        # 我们已经把磁盘上的目录删了，如果照抄原包的目录条目，就会在
+        # 包里留下一个空的 Payload/x.app/_CodeSignature/ 目录。
+        # iOS 安装器看到这个目录会认为"有签名但目录是空的"，直接拒绝；
+        # 我们的 verify_ipa 也会把它报成残留。
+        for name in meta:
+            if "/" in name:
+                parts = name.split("/")[:-1]
+                for k in range(1, len(parts) + 1):
+                    d = "/".join(parts[:k]) + "/"
+                    # 只保留磁盘上真实存在的目录
+                    local = os.path.join(unpacked, d.replace("/", os.sep))
+                    if os.path.isdir(local):
+                        dirs.add(d)
+        for d in sorted(dirs):
+            zi = zipfile.ZipInfo(d)
+            zi.compress_type = zipfile.ZIP_STORED
+            if d in meta:
+                zi.external_attr = meta[d][0]
+            else:
+                zi.external_attr = (0o40755 << 16) | 0x10
+            zi.create_system = 3
+            z.writestr(zi, b"")
+            written += 1
+
+        for dirpath, dirnames, filenames in os.walk(unpacked):
+            for fn in sorted(filenames):
                 full = os.path.join(dirpath, fn)
                 arc = os.path.relpath(full, unpacked).replace(os.sep, "/")
-                z.write(full, arc)
+
+                if arc in meta:
+                    ext, ctype = meta[arc]
+                else:
+                    ext, ctype = None, zipfile.ZIP_DEFLATED
+
+                if ext is None:
+                    mode = 0o100755 if is_executable(arc) else 0o100644
+                    ext = mode << 16
+
+                zi = zipfile.ZipInfo(arc)
+                with open(full, "rb") as f:
+                    data = f.read()
+                # 已签名/已压缩的大二进制用 STORED，其余 DEFLATED
+                zi.compress_type = (zipfile.ZIP_STORED
+                                    if ctype == zipfile.ZIP_STORED
+                                    else zipfile.ZIP_DEFLATED)
+                zi.external_attr = ext
+                zi.create_system = 3
+                zi.date_time = (2020, 1, 1, 0, 0, 0)
+                z.writestr(zi, data)
+                written += 1
+
     size = os.path.getsize(out_ipa)
-    log(f"输出 {out_ipa}（{size} 字节）")
+    log(f"输出 {out_ipa}（{size} 字节，{written} 个条目）")
     return size
 
 
@@ -200,7 +293,7 @@ def main():
     remove_codesig(app_dir)
 
     print("[6] 打包")
-    repack(work, args.output)
+    repack(work, args.output, src_ipa=args.ipa)
 
     # 自检：新 ipa 里必须有 dylib 和那条 load command
     print("[7] 自检")
