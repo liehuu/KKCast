@@ -73,7 +73,8 @@ def find_base():
         - 指向 v3 → 能启动，但体积翻倍、代理逻辑有缺陷 → 基线不干净
       所以 v4 打头，逐级回退。
     """
-    for cand in ("dist/kkys-dlna-v4.ipa",
+    for cand in ("dist/kkys-dlna-v5.ipa",
+                 "dist/kkys-dlna-v4.ipa",
                  "dist/kkys-dlna-v3.ipa",
                  "dist/kkys-dlna-v2.ipa",
                  "dist/kkys-dlna.ipa",
