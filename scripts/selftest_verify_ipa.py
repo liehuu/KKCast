@@ -65,8 +65,16 @@ def find_base():
     旧顺序以 dist/kkys-dlna.ipa（v1，主程序 chained fixups 已损坏）打头，
     结果 I1「基线应 PASS」永远红 —— 而那不是判据失效，是底包本身有缺陷。
     现在优先取最新版本，并把 v1/v2 明确排除。
+
+    ★ 顺序必须跟着"最新正确产出"走，否则每次出新版都要改这里。
+      历史教训：
+        - 指向 v1 → 主程序 chained fixups 坏 → I1 恒红
+        - 指向 v2 → dylib chained fixups 坏 → I1 恒红
+        - 指向 v3 → 能启动，但体积翻倍、代理逻辑有缺陷 → 基线不干净
+      所以 v4 打头，逐级回退。
     """
-    for cand in ("dist/kkys-dlna-v3.ipa",
+    for cand in ("dist/kkys-dlna-v4.ipa",
+                 "dist/kkys-dlna-v3.ipa",
                  "dist/kkys-dlna-v2.ipa",
                  "dist/kkys-dlna.ipa",
                  "dist-ci/kkys-dlna.ipa"):

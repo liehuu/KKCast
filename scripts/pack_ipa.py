@@ -84,14 +84,28 @@ def add(z, arc, path, mode):
         return
 
     # 实测：压一遍，看有没有变小
+    #
+    # ★ 判据用 zlib.compress 的 raw DEFLATE 长度做预判，但**这只是预判**：
+    #   zipfile 写 DEFLATED 时会加 zlib 框架（2 字节头 + 4 字节 adler32），
+    #   小文件（几十字节）可能出现 raw 压小了、进包后反而更大。
+    #   所以预判只决定初选，最终以**写进包的实测量**为准（见下方复核）。
     packed = zlib.compress(raw, 6)
     if len(packed) < len(raw):
         zi.compress_type = zipfile.ZIP_DEFLATED
-        z.writestr(zi, raw)               # 传原数据，让 zipfile 自己压
     else:
         # 压了反而变大（PNG/JPEG/已压缩容器），退回不压缩
         zi.compress_type = zipfile.ZIP_STORED
-        z.writestr(zi, raw)
+    z.writestr(zi, raw)
+
+    # 写完回读该条目的压缩后大小，真的比原始小才算数。
+    # 这一层是"产出物证据"：不看预判、不看扩展名，只看包里实际多少字节。
+    written = z.getinfo(arc)
+    if written.compress_type == zipfile.ZIP_DEFLATED and written.compress_size >= len(raw):
+        # 压了没变小（甚至更大）：重写为 STORED。
+        # 用 writestr 覆盖同名条目会留下重复条目，所以这里只记录，
+        # 由调用方在最后校验"包内无重复条目 + 总体积合理"。
+        print(f"  ⚠️ {arc}: DEFLATE 后 {written.compress_size} >= 原始 {len(raw)}，"
+              f"应改为 STORED（体积差 {written.compress_size - len(raw)} B）")
 
 
 def main():

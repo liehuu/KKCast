@@ -11,9 +11,9 @@ Build settings from command line:
 
 --- xcodebuild: WARNING: Using the first of multiple matching destinations:
 { platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device }
-{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], id:beaaf8c4abdc3ae69500ae04a23852092d971f9c, name:My Mac }
-{ platform:macOS, arch:arm64, variant:Mac Catalyst, id:beaaf8c4abdc3ae69500ae04a23852092d971f9c, name:My Mac }
-{ platform:macOS, arch:x86_64, variant:Mac Catalyst, id:beaaf8c4abdc3ae69500ae04a23852092d971f9c, name:My Mac }
+{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], id:e70c9c71be1c39e126a394f7cfd0d7bf4cbd4a95, name:My Mac }
+{ platform:macOS, arch:arm64, variant:Mac Catalyst, id:e70c9c71be1c39e126a394f7cfd0d7bf4cbd4a95, name:My Mac }
+{ platform:macOS, arch:x86_64, variant:Mac Catalyst, id:e70c9c71be1c39e126a394f7cfd0d7bf4cbd4a95, name:My Mac }
 { platform:iOS Simulator, id:dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder, name:Any iOS Simulator Device }
 { platform:macOS, variant:Mac Catalyst, name:Any Mac }
 note: Using codesigning identity override: 
@@ -44,8 +44,8 @@ ExecuteExternalTool /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/X
 
 ExecuteExternalTool /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk -x c -c /dev/null
 
-Build description signature: d8b58eae5237c75e9e4ad8247215c0e0
-Build description path: /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/XCBuildData/d8b58eae5237c75e9e4ad8247215c0e0.xcbuilddata
+Build description signature: 51344b3ceb4840cb3a48a43cd001b37a
+Build description path: /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/XCBuildData/51344b3ceb4840cb3a48a43cd001b37a.xcbuilddata
 CreateBuildDirectory /Users/runner/work/KKCast/KKCast/build/Build/Products
     cd /Users/runner/work/KKCast/KKCast/KKCast.xcodeproj
     builtin-create-build-directory /Users/runner/work/KKCast/KKCast/build/Build/Products
@@ -58,6 +58,10 @@ ClangStatCache /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeD
     cd /Users/runner/work/KKCast/KKCast/KKCast.xcodeproj
     /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk -o /Users/runner/work/KKCast/KKCast/build/SDKStatCaches.noindex/iphoneos18.5-22F76-a529daf784b3616c7c04a36aeb7f5c05.sdkstatcache
 
+CreateBuildDirectory /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphoneos
+    cd /Users/runner/work/KKCast/KKCast/KKCast.xcodeproj
+    builtin-create-build-directory /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphoneos
+
 WriteAuxiliaryFile /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast-06244447467e5b4afae4755b92e7712f-VFS-iphoneos/all-product-headers.yaml
     cd /Users/runner/work/KKCast/KKCast/KKCast.xcodeproj
     write-file /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast-06244447467e5b4afae4755b92e7712f-VFS-iphoneos/all-product-headers.yaml
@@ -65,10 +69,6 @@ WriteAuxiliaryFile /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.no
 CreateBuildDirectory /Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos
     cd /Users/runner/work/KKCast/KKCast/KKCast.xcodeproj
     builtin-create-build-directory /Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos
-
-CreateBuildDirectory /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphoneos
-    cd /Users/runner/work/KKCast/KKCast/KKCast.xcodeproj
-    builtin-create-build-directory /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphoneos
 
 WriteAuxiliaryFile /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp (in target 'KKCast' from project 'KKCast')
     cd /Users/runner/work/KKCast/KKCast
@@ -118,19 +118,19 @@ ScanDependencies /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noin
     
     builtin-ScanDependencies -o /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKProxy.o.scan -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -x objective-c -ivfsstatcache /Users/runner/work/KKCast/KKCast/build/SDKStatCaches.noindex/iphoneos18.5-22F76-a529daf784b3616c7c04a36aeb7f5c05.sdkstatcache -fmessage-length\=0 -fdiagnostics-show-note-include-stack -fmacro-backtrace-limit\=0 -fno-color-diagnostics -fmodules-prune-interval\=86400 -fmodules-prune-after\=345600 -fbuild-session-file\=/Users/runner/work/KKCast/KKCast/build/ModuleCache.noindex/Session.modulevalidation -fmodules-validate-once-per-build-session -Wnon-modular-include-in-framework-module -Werror\=non-modular-include-in-framework-module -Wno-trigraphs -Wno-missing-field-initializers -Wno-missing-prototypes -Wno-return-type -Wunreachable-code -Wno-implicit-atomic-properties -Werror\=deprecated-objc-isa-usage -Wno-objc-interface-ivars -Werror\=objc-root-class -Wno-arc-repeated-use-of-weak -Wno-missing-braces -Wparentheses -Wswitch -Wno-unused-function -Wno-unused-label -Wno-unused-parameter -Wno-unused-variable -Wunused-value -Wno-empty-body -Wno-uninitialized -Wno-unknown-pragmas -Wno-shadow -Wno-four-char-constants -Wno-conversion -Wno-constant-conversion -Wno-int-conversion -Wbool-conversion -Wno-enum-conversion -Wno-float-conversion -Wno-non-literal-null-conversion -Wno-objc-literal-conversion -Wshorten-64-to-32 -Wpointer-sign -Wno-newline-eof -Wno-selector -Wno-strict-selector-match -Wno-undeclared-selector -Wno-deprecated-implementations -Wno-implicit-fallthrough -fstrict-aliasing -Wprotocol -Wdeprecated-declarations -Wno-sign-conversion -Wno-infinite-recursion -Wno-comma -Wno-block-capture-autoreleasing -Wno-strict-prototypes -Wno-semicolon-before-method-body @/Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp -MMD -MT dependencies -MF /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKProxy.d --serialize-diagnostics /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKProxy.dia -c /Users/runner/work/KKCast/KKCast/KKCast/KKProxy.m -o /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKProxy.o
 
-ScanDependencies /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKDLNA.o /Users/runner/work/KKCast/KKCast/KKCast/KKDLNA.m normal arm64 objective-c com.apple.compilers.llvm.clang.1_0.compiler (in target 'KKCast' from project 'KKCast')
-    cd /Users/runner/work/KKCast/KKCast
-    
-    Using response file: /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp
-    
-    builtin-ScanDependencies -o /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKDLNA.o.scan -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -x objective-c -ivfsstatcache /Users/runner/work/KKCast/KKCast/build/SDKStatCaches.noindex/iphoneos18.5-22F76-a529daf784b3616c7c04a36aeb7f5c05.sdkstatcache -fmessage-length\=0 -fdiagnostics-show-note-include-stack -fmacro-backtrace-limit\=0 -fno-color-diagnostics -fmodules-prune-interval\=86400 -fmodules-prune-after\=345600 -fbuild-session-file\=/Users/runner/work/KKCast/KKCast/build/ModuleCache.noindex/Session.modulevalidation -fmodules-validate-once-per-build-session -Wnon-modular-include-in-framework-module -Werror\=non-modular-include-in-framework-module -Wno-trigraphs -Wno-missing-field-initializers -Wno-missing-prototypes -Wno-return-type -Wunreachable-code -Wno-implicit-atomic-properties -Werror\=deprecated-objc-isa-usage -Wno-objc-interface-ivars -Werror\=objc-root-class -Wno-arc-repeated-use-of-weak -Wno-missing-braces -Wparentheses -Wswitch -Wno-unused-function -Wno-unused-label -Wno-unused-parameter -Wno-unused-variable -Wunused-value -Wno-empty-body -Wno-uninitialized -Wno-unknown-pragmas -Wno-shadow -Wno-four-char-constants -Wno-conversion -Wno-constant-conversion -Wno-int-conversion -Wbool-conversion -Wno-enum-conversion -Wno-float-conversion -Wno-non-literal-null-conversion -Wno-objc-literal-conversion -Wshorten-64-to-32 -Wpointer-sign -Wno-newline-eof -Wno-selector -Wno-strict-selector-match -Wno-undeclared-selector -Wno-deprecated-implementations -Wno-implicit-fallthrough -fstrict-aliasing -Wprotocol -Wdeprecated-declarations -Wno-sign-conversion -Wno-infinite-recursion -Wno-comma -Wno-block-capture-autoreleasing -Wno-strict-prototypes -Wno-semicolon-before-method-body @/Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp -MMD -MT dependencies -MF /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKDLNA.d --serialize-diagnostics /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKDLNA.dia -c /Users/runner/work/KKCast/KKCast/KKCast/KKDLNA.m -o /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKDLNA.o
-
 ScanDependencies /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKHook.o /Users/runner/work/KKCast/KKCast/KKCast/KKHook.m normal arm64 objective-c com.apple.compilers.llvm.clang.1_0.compiler (in target 'KKCast' from project 'KKCast')
     cd /Users/runner/work/KKCast/KKCast
     
     Using response file: /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp
     
     builtin-ScanDependencies -o /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKHook.o.scan -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -x objective-c -ivfsstatcache /Users/runner/work/KKCast/KKCast/build/SDKStatCaches.noindex/iphoneos18.5-22F76-a529daf784b3616c7c04a36aeb7f5c05.sdkstatcache -fmessage-length\=0 -fdiagnostics-show-note-include-stack -fmacro-backtrace-limit\=0 -fno-color-diagnostics -fmodules-prune-interval\=86400 -fmodules-prune-after\=345600 -fbuild-session-file\=/Users/runner/work/KKCast/KKCast/build/ModuleCache.noindex/Session.modulevalidation -fmodules-validate-once-per-build-session -Wnon-modular-include-in-framework-module -Werror\=non-modular-include-in-framework-module -Wno-trigraphs -Wno-missing-field-initializers -Wno-missing-prototypes -Wno-return-type -Wunreachable-code -Wno-implicit-atomic-properties -Werror\=deprecated-objc-isa-usage -Wno-objc-interface-ivars -Werror\=objc-root-class -Wno-arc-repeated-use-of-weak -Wno-missing-braces -Wparentheses -Wswitch -Wno-unused-function -Wno-unused-label -Wno-unused-parameter -Wno-unused-variable -Wunused-value -Wno-empty-body -Wno-uninitialized -Wno-unknown-pragmas -Wno-shadow -Wno-four-char-constants -Wno-conversion -Wno-constant-conversion -Wno-int-conversion -Wbool-conversion -Wno-enum-conversion -Wno-float-conversion -Wno-non-literal-null-conversion -Wno-objc-literal-conversion -Wshorten-64-to-32 -Wpointer-sign -Wno-newline-eof -Wno-selector -Wno-strict-selector-match -Wno-undeclared-selector -Wno-deprecated-implementations -Wno-implicit-fallthrough -fstrict-aliasing -Wprotocol -Wdeprecated-declarations -Wno-sign-conversion -Wno-infinite-recursion -Wno-comma -Wno-block-capture-autoreleasing -Wno-strict-prototypes -Wno-semicolon-before-method-body @/Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp -MMD -MT dependencies -MF /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKHook.d --serialize-diagnostics /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKHook.dia -c /Users/runner/work/KKCast/KKCast/KKCast/KKHook.m -o /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKHook.o
+
+ScanDependencies /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKDLNA.o /Users/runner/work/KKCast/KKCast/KKCast/KKDLNA.m normal arm64 objective-c com.apple.compilers.llvm.clang.1_0.compiler (in target 'KKCast' from project 'KKCast')
+    cd /Users/runner/work/KKCast/KKCast
+    
+    Using response file: /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp
+    
+    builtin-ScanDependencies -o /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKDLNA.o.scan -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -x objective-c -ivfsstatcache /Users/runner/work/KKCast/KKCast/build/SDKStatCaches.noindex/iphoneos18.5-22F76-a529daf784b3616c7c04a36aeb7f5c05.sdkstatcache -fmessage-length\=0 -fdiagnostics-show-note-include-stack -fmacro-backtrace-limit\=0 -fno-color-diagnostics -fmodules-prune-interval\=86400 -fmodules-prune-after\=345600 -fbuild-session-file\=/Users/runner/work/KKCast/KKCast/build/ModuleCache.noindex/Session.modulevalidation -fmodules-validate-once-per-build-session -Wnon-modular-include-in-framework-module -Werror\=non-modular-include-in-framework-module -Wno-trigraphs -Wno-missing-field-initializers -Wno-missing-prototypes -Wno-return-type -Wunreachable-code -Wno-implicit-atomic-properties -Werror\=deprecated-objc-isa-usage -Wno-objc-interface-ivars -Werror\=objc-root-class -Wno-arc-repeated-use-of-weak -Wno-missing-braces -Wparentheses -Wswitch -Wno-unused-function -Wno-unused-label -Wno-unused-parameter -Wno-unused-variable -Wunused-value -Wno-empty-body -Wno-uninitialized -Wno-unknown-pragmas -Wno-shadow -Wno-four-char-constants -Wno-conversion -Wno-constant-conversion -Wno-int-conversion -Wbool-conversion -Wno-enum-conversion -Wno-float-conversion -Wno-non-literal-null-conversion -Wno-objc-literal-conversion -Wshorten-64-to-32 -Wpointer-sign -Wno-newline-eof -Wno-selector -Wno-strict-selector-match -Wno-undeclared-selector -Wno-deprecated-implementations -Wno-implicit-fallthrough -fstrict-aliasing -Wprotocol -Wdeprecated-declarations -Wno-sign-conversion -Wno-infinite-recursion -Wno-comma -Wno-block-capture-autoreleasing -Wno-strict-prototypes -Wno-semicolon-before-method-body @/Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp -MMD -MT dependencies -MF /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKDLNA.d --serialize-diagnostics /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKDLNA.dia -c /Users/runner/work/KKCast/KKCast/KKCast/KKDLNA.m -o /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKDLNA.o
 
 ScanDependencies /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKCastUI.o /Users/runner/work/KKCast/KKCast/KKCast/KKCastUI.m normal arm64 objective-c com.apple.compilers.llvm.clang.1_0.compiler (in target 'KKCast' from project 'KKCast')
     cd /Users/runner/work/KKCast/KKCast
@@ -167,13 +167,13 @@ PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noin
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_fenv-EHQG6B426M1XDYGBD532YXSZ3.scan
 
-PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_float-6NSBSW5QVUPIM4J2KGUD4ELEF.scan
-    cd /Users/runner/work/KKCast/KKCast
-    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_float-6NSBSW5QVUPIM4J2KGUD4ELEF.scan
-
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/ptrcheck-EBYE9LPD4DKYSMD8W749LLSUJ.scan
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/ptrcheck-EBYE9LPD4DKYSMD8W749LLSUJ.scan
+
+PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_float-6NSBSW5QVUPIM4J2KGUD4ELEF.scan
+    cd /Users/runner/work/KKCast/KKCast
+    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_float-6NSBSW5QVUPIM4J2KGUD4ELEF.scan
 
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/os_availability_internal-D0XHQT08SFTDV5YTMA6KDMMPO.scan
     cd /Users/runner/work/KKCast/KKCast
@@ -187,13 +187,13 @@ PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noin
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/os_availability-8F04P0WMF6QN5ADINOAO28M0J.scan
 
-PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/AvailabilityMacros-A5S07X51X7F9N90A9YJWKP6S5.scan
-    cd /Users/runner/work/KKCast/KKCast
-    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/AvailabilityMacros-A5S07X51X7F9N90A9YJWKP6S5.scan
-
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/DarwinFoundation-E9BBXPONFW7CXF40RW11YSRT7.scan
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/DarwinFoundation-E9BBXPONFW7CXF40RW11YSRT7.scan
+
+PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/AvailabilityMacros-A5S07X51X7F9N90A9YJWKP6S5.scan
+    cd /Users/runner/work/KKCast/KKCast
+    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/AvailabilityMacros-A5S07X51X7F9N90A9YJWKP6S5.scan
 
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/runetype-37QTVW6ZC7WZCQSCHI40ST4QY.scan
     cd /Users/runner/work/KKCast/KKCast
@@ -255,13 +255,13 @@ PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noin
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_stdint-5NVT3YXHBIK4QPUERPKXDRQCF.scan
 
-PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_wctype-CG8PBA2GZSZQHDR5PRBLNI44L.scan
-    cd /Users/runner/work/KKCast/KKCast
-    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_wctype-CG8PBA2GZSZQHDR5PRBLNI44L.scan
-
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/netinet_in-EDQX8F04IVOFCYJTXBQY5F3H6.scan
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/netinet_in-EDQX8F04IVOFCYJTXBQY5F3H6.scan
+
+PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_wctype-CG8PBA2GZSZQHDR5PRBLNI44L.scan
+    cd /Users/runner/work/KKCast/KKCast
+    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_wctype-CG8PBA2GZSZQHDR5PRBLNI44L.scan
 
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_errno-2L8N690MOFZYY1G1BS35OXCND.scan
     cd /Users/runner/work/KKCast/KKCast
@@ -327,10 +327,6 @@ PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noin
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_complex-5URW75QIJ705W2MYXCOMNWB1Q.scan
 
-PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_resource-40TK57IOAAKG8TPMBDTK8XOVZ.scan
-    cd /Users/runner/work/KKCast/KKCast
-    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_resource-40TK57IOAAKG8TPMBDTK8XOVZ.scan
-
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/pthread-2HP6MQTMDOMF7QHVK0U1Y2J9T.scan
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/pthread-2HP6MQTMDOMF7QHVK0U1Y2J9T.scan
@@ -347,10 +343,6 @@ PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noin
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/gethostuuid-CU41TIDX1AVM8N5DI5TVJDLWD.scan
 
-PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_wait-922P80O0I18VKYW7CJGJTNOGH.scan
-    cd /Users/runner/work/KKCast/KKCast
-    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_wait-922P80O0I18VKYW7CJGJTNOGH.scan
-
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_select-AURGY0NX39E1OP5QQUBAXEIXC.scan
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_select-AURGY0NX39E1OP5QQUBAXEIXC.scan
@@ -359,21 +351,29 @@ PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noin
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_tgmath-62HPZOSDNAGRX8TKNM6HMZXUW.scan
 
-PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_stdlib-9ZYYD0HUQ6NJQBX1E1ZNRMKA6.scan
+PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_resource-40TK57IOAAKG8TPMBDTK8XOVZ.scan
     cd /Users/runner/work/KKCast/KKCast
-    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_stdlib-9ZYYD0HUQ6NJQBX1E1ZNRMKA6.scan
+    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_resource-40TK57IOAAKG8TPMBDTK8XOVZ.scan
 
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/unistd-2CMA4SWBBSI9PTDAA5268T1UX.scan
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/unistd-2CMA4SWBBSI9PTDAA5268T1UX.scan
 
-PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/simd-10T2GDCGE6VDGW11QRA3R7E0N.scan
+PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_wait-922P80O0I18VKYW7CJGJTNOGH.scan
     cd /Users/runner/work/KKCast/KKCast
-    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/simd-10T2GDCGE6VDGW11QRA3R7E0N.scan
+    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_wait-922P80O0I18VKYW7CJGJTNOGH.scan
+
+PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_stdlib-9ZYYD0HUQ6NJQBX1E1ZNRMKA6.scan
+    cd /Users/runner/work/KKCast/KKCast
+    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_stdlib-9ZYYD0HUQ6NJQBX1E1ZNRMKA6.scan
 
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Darwin-7D8DX789Y8J0UXT3ZZH6Y408A.scan
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Darwin-7D8DX789Y8J0UXT3ZZH6Y408A.scan
+
+PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/simd-10T2GDCGE6VDGW11QRA3R7E0N.scan
+    cd /Users/runner/work/KKCast/KKCast
+    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/simd-10T2GDCGE6VDGW11QRA3R7E0N.scan
 
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/ObjectiveC-1RVDHBK4BIR1DIN9TAYVKVA5T.scan
     cd /Users/runner/work/KKCast/KKCast
@@ -423,13 +423,13 @@ PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noin
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Foundation-D34ACL5W55PG2X1UNN9TO10Y8.scan
 
-PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/ImageIO-OTEP8CTSYXA14CY8SMDOB1PK.scan
-    cd /Users/runner/work/KKCast/KKCast
-    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/ImageIO-OTEP8CTSYXA14CY8SMDOB1PK.scan
-
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreText-C23SBOMT4Y0SM4Y9H07ZI8BMB.scan
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreText-C23SBOMT4Y0SM4Y9H07ZI8BMB.scan
+
+PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/ImageIO-OTEP8CTSYXA14CY8SMDOB1PK.scan
+    cd /Users/runner/work/KKCast/KKCast
+    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/ImageIO-OTEP8CTSYXA14CY8SMDOB1PK.scan
 
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/UserNotifications-74YCBRI120WK2AD5H7SHO3OOF.scan
     cd /Users/runner/work/KKCast/KKCast
@@ -439,13 +439,13 @@ PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noin
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/UniformTypeIdentifiers-8CNRWXGD36MXTCEWFWWM7JDUQ.scan
 
-PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Symbols-EYA15J6GY4CKTW0P7XNI7PWUQ.scan
-    cd /Users/runner/work/KKCast/KKCast
-    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Symbols-EYA15J6GY4CKTW0P7XNI7PWUQ.scan
-
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreMIDI-4H370B4MOE0Z5M1MPVXITUYM4.scan
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreMIDI-4H370B4MOE0Z5M1MPVXITUYM4.scan
+
+PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Symbols-EYA15J6GY4CKTW0P7XNI7PWUQ.scan
+    cd /Users/runner/work/KKCast/KKCast
+    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Symbols-EYA15J6GY4CKTW0P7XNI7PWUQ.scan
 
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/IOSurface-B6HK8MBHZ7E5VQLJXF2QFSC7J.scan
     cd /Users/runner/work/KKCast/KKCast
@@ -455,6 +455,10 @@ PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noin
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/FileProvider-4D1LUH8HZ3LJ4VH7726D5MVRK.scan
 
+PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/AudioToolbox-DUZI88UE700QDUM88638JVKP1.scan
+    cd /Users/runner/work/KKCast/KKCast
+    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/AudioToolbox-DUZI88UE700QDUM88638JVKP1.scan
+
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/OpenGLES-EOC2GHXVU4IIEXTOZZZY0W19G.scan
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/OpenGLES-EOC2GHXVU4IIEXTOZZZY0W19G.scan
@@ -463,21 +467,17 @@ PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noin
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Metal-5W5YVCN9RL5BV4XZOZH6VV8E2.scan
 
-PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/AudioToolbox-DUZI88UE700QDUM88638JVKP1.scan
-    cd /Users/runner/work/KKCast/KKCast
-    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/AudioToolbox-DUZI88UE700QDUM88638JVKP1.scan
-
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreVideo-70ZNSJK9N902FVHQECPBGJWGP.scan
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreVideo-70ZNSJK9N902FVHQECPBGJWGP.scan
 
-PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/QuartzCore-CAWX1D7TI5F97NUXFYI5CWPK5.scan
-    cd /Users/runner/work/KKCast/KKCast
-    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/QuartzCore-CAWX1D7TI5F97NUXFYI5CWPK5.scan
-
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreImage-1646G1T66AZJJLM4BX2C8R154.scan
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreImage-1646G1T66AZJJLM4BX2C8R154.scan
+
+PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/QuartzCore-CAWX1D7TI5F97NUXFYI5CWPK5.scan
+    cd /Users/runner/work/KKCast/KKCast
+    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/QuartzCore-CAWX1D7TI5F97NUXFYI5CWPK5.scan
 
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreMedia-C79MURCENVGQXK0QAK8P61BD2.scan
     cd /Users/runner/work/KKCast/KKCast
@@ -487,13 +487,13 @@ PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noin
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/UIKit-6TP5RN8POHABGB5QH2TV6V7B8.scan
 
-PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/AVFAudio-9HJPE2ZCMR2TTT31APLP8U0M3.scan
-    cd /Users/runner/work/KKCast/KKCast
-    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/AVFAudio-9HJPE2ZCMR2TTT31APLP8U0M3.scan
-
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/MediaToolbox-CPFL4FTD49BZHNDKSG2G898T9.scan
     cd /Users/runner/work/KKCast/KKCast
     builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/MediaToolbox-CPFL4FTD49BZHNDKSG2G898T9.scan
+
+PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/AVFAudio-9HJPE2ZCMR2TTT31APLP8U0M3.scan
+    cd /Users/runner/work/KKCast/KKCast
+    builtin-precompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/AVFAudio-9HJPE2ZCMR2TTT31APLP8U0M3.scan
 
 PrecompileModule /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/AVFoundation-8GEHV9KHVNAB28TMEAA6OLIU6.scan
     cd /Users/runner/work/KKCast/KKCast
@@ -532,13 +532,13 @@ Ld /Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos/KKCast
     /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios14.0 -dynamiclib -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk -Os -L/Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphoneos -L/Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos -F/Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphoneos -F/Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos -filelist /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKCast.LinkFileList -install_name @rpath/KKCast.dylib -Xlinker -rpath -Xlinker @executable_path/Frameworks -Xlinker -rpath -Xlinker @loader_path/Frameworks -Xlinker -object_path_lto -Xlinker /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKCast_lto.o -Xlinker -dependency_info -Xlinker /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/KKCast.build/Release-iphoneos/KKCast.build/Objects-normal/arm64/KKCast_dependency_info.dat -fobjc-arc -fobjc-link-runtime -framework Foundation -framework UIKit -framework AVFoundation -framework CoreGraphics -framework CoreMedia -framework Network -lobjc -compatibility_version 1 -current_version 1 -o /Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos/KKCast.dylib
 ld: warning: ignoring duplicate libraries: '-lobjc'
 
-GenerateTAPI /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphoneos/KKCast.tbd (in target 'KKCast' from project 'KKCast')
-    cd /Users/runner/work/KKCast/KKCast
-    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/tapi stubify -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk -F/Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos -L/Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos /Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos/KKCast.dylib -o /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphoneos/KKCast.tbd
-
 GenerateDSYMFile /Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos/KKCast.dylib.dSYM /Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos/KKCast.dylib (in target 'KKCast' from project 'KKCast')
     cd /Users/runner/work/KKCast/KKCast
     /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/dsymutil /Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos/KKCast.dylib -o /Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos/KKCast.dylib.dSYM
+
+GenerateTAPI /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphoneos/KKCast.tbd (in target 'KKCast' from project 'KKCast')
+    cd /Users/runner/work/KKCast/KKCast
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/tapi stubify -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk -F/Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos -L/Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos /Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos/KKCast.dylib -o /Users/runner/work/KKCast/KKCast/build/Build/Intermediates.noindex/EagerLinkingTBDs/Release-iphoneos/KKCast.tbd
 
 RegisterExecutionPolicyException /Users/runner/work/KKCast/KKCast/build/Build/Products/Release-iphoneos/KKCast.dylib (in target 'KKCast' from project 'KKCast')
     cd /Users/runner/work/KKCast/KKCast
