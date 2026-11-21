@@ -232,6 +232,30 @@ def main():
              "    if (!text.length || !token.length) return text ?: @\"\";",
              expect_fail=True, expect_keyword="原样返回")
 
+        # ── I 组：快进转圈的三条根因，每条都要能变红 ──
+        #
+        # 对应用户反馈："手机上拖动进度条很快就能播放，但投屏后
+        # 快进就一直转圈"。手机走系统 AVPlayer 不经过代理，所以正常；
+        # 投屏走我们的代理，问题全在这一层。
+
+        print("I1. 头读取退回大写 key（HTTP/2 下丢 Content-Range）")
+        case("I1 大写 key 读头", "KKProxy.m",
+             '    NSString *cr = kk_header(hr, @"Content-Range");',
+             '    NSString *cr = hr.allHeaderFields[@"Content-Range"];',
+             expect_fail=True, expect_keyword="大写 key")
+
+        print("I2. 不转发 Content-Range（电视无法定位）")
+        case("I2 丢 Content-Range", "KKProxy.m",
+             '    if (cr.length) extra[@"Content-Range"] = cr;',
+             '    if (cr.length) { /* 漏转发 */ }',
+             expect_fail=True, expect_keyword="Content-Range")
+
+        print("I3. 去掉 playlistBuf 上限（误判即 OOM）")
+        case("I3 无缓冲上限", "KKProxy.m",
+             "if (self.playlistBuf.length > 4 * 1024 * 1024) {",
+             "if (0) {",
+             expect_fail=True, expect_keyword="上限")
+
     finally:
         restore()
         shutil.rmtree(BACKUP, ignore_errors=True)

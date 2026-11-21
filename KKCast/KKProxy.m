@@ -40,6 +40,46 @@ static NSTimeInterval kk_now(void) {
     return (NSTimeInterval)tv.tv_sec + (NSTimeInterval)tv.tv_usec / 1000000.0;
 }
 
+/// 从响应头里取一个字段，**大小写不敏感**。
+///
+/// ★ 这是"投屏后快进一直转圈"的核心原因之一，而且极难发现。
+///
+/// `NSHTTPURLResponse.allHeaderFields` 的 key 大小写**取决于协议版本**：
+///   - HTTP/1.1：通常保留服务端原始大小写（"Content-Type"）
+///   - HTTP/2  ：RFC 7540 §8.1.2 要求所有头名**必须小写**
+///               → 字典里是 "content-type" / "content-length" / "content-range"
+///
+/// 原来四处都写成 allHeaderFields[@"Content-Type"] 这类大写形式，
+/// 走 HTTP/2 的源站（现在绝大多数 CDN 都是）全部取到 nil：
+///   - ctype  → 退化成 "application/octet-stream"
+///   - cl     → nil，于是 Content-Length 当成"未知长度"不发
+///   - cr     → nil，于是 **Content-Range 完全不转发**
+///   - ar     → nil
+///
+/// 后果链条（正是用户看到的现象）：
+///   电视快进 → 发 Range 请求 → 我们透传给源站 → 源站回 206 + Content-Range
+///   → 我们因为读不到 content-range 不转发 → 电视收到 206 却没有 Content-Range
+///   → 电视无法确认"这段字节对应哪个时间点" → 校验失败/一直缓冲 → 转圈
+///
+/// 用 valueForHTTPHeaderField: 也不可靠：它在不同系统版本上对大小写的
+/// 处理不一致。这里自己遍历，小写比较，是唯一稳的做法。
+static NSString *kk_header(NSHTTPURLResponse *hr, NSString *name) {
+    if (!hr || !name.length) return nil;
+    // 先按原样试一次，命中就返回（HTTP/1.1 场景，零成本）
+    NSString *v = hr.allHeaderFields[name];
+    if ([v isKindOfClass:[NSString class]] && v.length) return v;
+    NSString *want = name.lowercaseString;
+    for (id k in hr.allHeaderFields) {
+        if (![k isKindOfClass:[NSString class]]) continue;
+        if ([((NSString *)k).lowercaseString isEqualToString:want]) {
+            id val = hr.allHeaderFields[k];
+            if ([val isKindOfClass:[NSString class]]) return val;
+            if (val) return [val description];
+        }
+    }
+    return nil;
+}
+
 /// 尽力把 buf 的 len 字节写到 fd，返回**实际写出**的字节数。
 ///
 /// 返回值 < len 表示对端确实不再接收，调用方应当收尾这条连接。
@@ -160,6 +200,12 @@ static size_t kk_send_all(int fd, const uint8_t *buf, size_t len) {
 /// 防止重复 close 同一个 fd（见 closeClientOnce 的说明）
 @property (nonatomic, assign) BOOL clientClosed;
 @property (nonatomic, strong) NSMutableData *playlistBuf;
+/// 上游响应头快照。误判 playlistMode 后要补发头，这里得留着原始
+/// 状态码/类型/长度，不能靠事后重新猜。
+@property (nonatomic, assign) NSInteger upstreamCode;
+@property (nonatomic, copy) NSString *upstreamType;
+@property (nonatomic, assign) NSUInteger upstreamLength;
+@property (nonatomic, strong) NSDictionary<NSString *, NSString *> *upstreamExtra;
 - (instancetype)initWithRequest:(NSURLRequest *)req
                          client:(int)client
                           owner:(KKProxyServer *)owner
@@ -169,6 +215,7 @@ static size_t kk_send_all(int fd, const uint8_t *buf, size_t len) {
 - (void)finish;
 - (void)flushPlaylistWithCode:(NSInteger)code;
 - (void)closeClientOnce;
+- (void)sendLateHeaderForCorrectedMode:(NSUInteger)pendingLength;
 @end
 
 @implementation KKProxyServer
@@ -786,11 +833,15 @@ static size_t kk_send_all(int fd, const uint8_t *buf, size_t len) {
         _playlistBuf = [NSMutableData data];
         NSURLSessionConfiguration *c = [NSURLSessionConfiguration ephemeralSessionConfiguration];
         // 单次请求等待首字节的时限。快进到远处时需要重新定位，
-        // 5 秒太紧，给 20 秒；整片下载另由 timeoutIntervalForResource 控制。
-        c.timeoutIntervalForRequest = 20;
+        // 源站可能还要回源转码，5 秒太紧。这里给 25 秒，
+        // 与 proxyRequest 里 req.timeoutInterval=30 大致对齐。
+        c.timeoutIntervalForRequest = 25;
         // 整片下载可能很久，给 1 小时
         c.timeoutIntervalForResource = 3600;
         c.requestCachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
+        // 不限制单 host 并发：快进时电视会瞬间并发请求多个分片，
+        // 限制成 8 会让后面的分片排队等待，表现为"转圈很久才开始"。
+        c.HTTPMaximumConnectionsPerHost = 16;
         _session = [NSURLSession sessionWithConfiguration:c delegate:self delegateQueue:nil];
         _task = [_session dataTaskWithRequest:req];
     }
@@ -861,14 +912,16 @@ didCompleteWithError:(NSError *)error {
 didReceiveResponse:(NSURLResponse *)response
  completionHandler:(void (^)(NSURLSessionResponseDisposition))completionHandler {
     NSHTTPURLResponse *hr = (NSHTTPURLResponse *)response;
-    NSString *ctype = hr.allHeaderFields[@"Content-Type"] ?: @"application/octet-stream";
+    // ★ 必须用大小写不敏感的读取（见 kk_header 的说明）。
+    NSString *ctype = kk_header(hr, @"Content-Type") ?: @"application/octet-stream";
     NSInteger code = hr.statusCode;
 
     NSString *lowTarget = self.target.lowercaseString;
-    self.playlistMode = [ctype containsString:@"mpegurl"] ||
+    NSString *lowCtype = ctype.lowercaseString;
+    self.playlistMode = [lowCtype containsString:@"mpegurl"] ||
                         ([lowTarget containsString:@".m3u8"] &&
-                         ![ctype containsString:@"video"] &&
-                         ![ctype containsString:@"octet-stream"]);
+                         ![lowCtype containsString:@"video"] &&
+                         ![lowCtype containsString:@"octet-stream"]);
 
     if (self.playlistMode) {
         // 播放列表很小（几 KB），先缓冲完全部再重写，
@@ -879,11 +932,36 @@ didReceiveResponse:(NSURLResponse *)response
 
     // 媒体流：立刻发响应头，然后逐块转字节
     NSMutableDictionary *extra = [NSMutableDictionary dictionary];
-    NSString *cr = hr.allHeaderFields[@"Content-Range"];
-    if (cr) extra[@"Content-Range"] = cr;
-    NSString *cl = hr.allHeaderFields[@"Content-Length"];
-    NSString *ar = hr.allHeaderFields[@"Accept-Ranges"];
-    if (ar) extra[@"Accept-Ranges"] = ar;
+    // Runtime 里字典 key 一律用规范大小写，避免下游再踩同样的坑。
+    NSString *cr = kk_header(hr, @"Content-Range");
+    if (cr.length) extra[@"Content-Range"] = cr;
+    NSString *cl = kk_header(hr, @"Content-Length");
+    NSString *ar = kk_header(hr, @"Accept-Ranges");
+    if (ar.length) extra[@"Accept-Ranges"] = ar;
+
+    // ★ 快进（seek）能不能成功，全看这一处有没有把 Content-Range 送出去。
+    //
+    //   电视发 Range: bytes=X- 过来，源站回 206 并带
+    //   Content-Range: bytes X-Y/TOTAL。电视靠这个头确认
+    //   "我要的那一段，服务端确实从 X 开始了，总长是 TOTAL"。
+    //   缺了它，电视会认为响应无法定位 → 一直缓冲 / 反复重试 → 转圈。
+    //
+    //   原来读 allHeaderFields[@"Content-Range"]，走 HTTP/2 的源站
+    //   key 是小写 content-range，读到 nil，这个头就永远没被转发过。
+    //   只有在 HTTP/1.1 源站上才"碰巧"能用 —— 这解释了为什么
+    //   手机 App 内拖动正常（走系统 AVPlayer，不经过我们），
+    //   而投屏后快进就卡住。
+    if (code == 206 && !cr.length) {
+        // 206 却没有 Content-Range：这是上游自己不合规，但对我们
+        // 更危险 —— 直接转 206 会让电视无法定位。记日志便于归因。
+        KKLog(@"上游 206 缺少 Content-Range: %@", self.target);
+    }
+
+    // 记录快照：万一 playlistMode 判错，后面要按这个补发头。
+    self.upstreamCode = code;
+    self.upstreamType = ctype;
+    self.upstreamLength = cl ? (NSUInteger)cl.longLongValue : 0;
+    self.upstreamExtra = [extra copy];
 
     [self.owner sendStreamHeader:self.client
                             code:code
@@ -895,11 +973,61 @@ didReceiveResponse:(NSURLResponse *)response
     completionHandler(NSURLSessionResponseAllow);
 }
 
+/// playlistMode 判错后的补救：把本该早发的响应头补上。
+///
+/// 场景：上游把分片标成 mpegurl，我们先按播放列表缓冲，
+/// 等缓冲超过阈值才发现不对。此时电视还一条字节都没收到，
+/// 必须先把响应头按"媒体流"补发，再送已缓冲的内容。
+/// 否则电视收到裸数据流，直接判协议错。
+- (void)sendLateHeaderForCorrectedMode:(NSUInteger)pendingLength {
+    // 已缓冲的 pendingLength 是我们**确定**会发的字节数。
+    // 上游声明总长 upstreamLength，已缓冲 pendingLength，
+    // 剩余未下载 = upstreamLength - pendingLength（已知时）。
+    NSUInteger total = self.upstreamLength;
+    NSUInteger remain = (total > pendingLength) ? (total - pendingLength) : 0;
+    // 用剩余长度做 Content-Length：调用方随后会先发 pending、
+    // 再继续把后续 didReceiveData 转发出去，总量正好对上。
+    [self.owner sendStreamHeader:self.client
+                            code:self.upstreamCode
+                            type:self.upstreamType
+                          length:remain
+                           extra:self.upstreamExtra];
+    self.headerSent = YES;
+}
+
 - (void)URLSession:(NSURLSession *)session
           dataTask:(NSURLSessionDataTask *)dataTask
     didReceiveData:(NSData *)data {
     if (self.playlistMode) {
         [self.playlistBuf appendData:data];
+        // ★ 播放列表缓冲必须有上限。
+        //
+        // playlistMode 是**按响应头猜**出来的（Content-Type 含 mpegurl）。
+        // 源站把分片也标成 mpegurl 的情况真实存在（尤其是一些自制
+        // CDN 或错误配置），一旦误判，整个分片（可能几 MB 甚至更大）
+        // 会被全部读进内存，且这个 streamer 永远不会走到 flush
+        // （那要等 didCompleteWithError），内存持续增长。
+        //
+        // m3u8 正常只有几 KB～几十 KB。超过 4MB 必然不是播放列表，
+        // 立刻纠正判定、改为流式转发，避免 OOM 被系统杀掉。
+        if (self.playlistBuf.length > 4 * 1024 * 1024) {
+            KKLog(@"播放列表缓冲超 4MB，判定有误，改为流式转发: %@", self.target);
+            self.playlistMode = NO;
+            // 已经把前面的数据缓冲了，先补发响应头和已有内容，
+            // 否则电视会收到不完整的流。
+            NSData *pending = [self.playlistBuf copy];
+            self.playlistBuf = [NSMutableData data];
+            if (!self.headerSent) {
+                [self sendLateHeaderForCorrectedMode:pending.length];
+            }
+            size_t w = kk_send_all(self.client, pending.bytes, pending.length);
+            if (w < pending.length) {
+                self.headerSent = NO;
+                [self closeClientOnce];
+                [self finish];
+                return;
+            }
+        }
         return;
     }
     if (!self.headerSent) return;

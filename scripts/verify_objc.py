@@ -32,6 +32,101 @@ def ok(msg):
     print(f"  ✅ {msg}")
 
 
+def strip_comments_only(src):
+    """只把注释替换成等长空白，**字符串字面量原样保留**，偏移不变。
+
+    为什么需要这个变体：
+      strip_comments_and_strings 会把字符串内容抹成空格（这是为了
+      括号计数不被字符串里的 "{" 带偏）。但有些判据要检查的恰恰是
+      **字符串字面量的内容**，例如：
+        - allHeaderFields[@"Content-Range"] 里的大写 key
+        - extra[@"Content-Range"] = cr 这种字面量下标
+      在剥离版上搜这些等于搜一个不存在的东西，判据永远通过（假绿）。
+
+      反过来，直接搜原文也不行：注释里为了说明"错误写法长什么样"
+      往往会把 `allHeaderFields[@"Content-Type"]` 原样写出来，
+      那会被判成违规 —— 假红。
+
+      所以需要第三种视图：注释没了，字符串还在。
+    """
+    out = []
+    i = 0
+    n = len(src)
+    state = "code"          # code | line_comment | block_comment | string | char
+    while i < n:
+        c = src[i]
+        nx = src[i + 1] if i + 1 < n else ""
+
+        if state == "code":
+            if c == "/" and nx == "/":
+                state = "line_comment"
+                out.append("  ")
+                i += 2
+                continue
+            if c == "/" and nx == "*":
+                state = "block_comment"
+                out.append("  ")
+                i += 2
+                continue
+            if c == '"':
+                state = "string"
+                out.append(c)
+                i += 1
+                continue
+            if c == "'":
+                state = "char"
+                out.append(c)
+                i += 1
+                continue
+            out.append(c)
+            i += 1
+            continue
+
+        if state == "line_comment":
+            if c == "\n":
+                state = "code"
+                out.append("\n")
+            else:
+                out.append(" ")
+            i += 1
+            continue
+
+        if state == "block_comment":
+            if c == "*" and nx == "/":
+                state = "code"
+                out.append("  ")
+                i += 2
+                continue
+            out.append("\n" if c == "\n" else " ")
+            i += 1
+            continue
+
+        if state == "string":
+            # 原样保留字符串内容（包括转义）
+            if c == "\\":
+                out.append(src[i:i + 2])
+                i += 2
+                continue
+            out.append(c)
+            if c == '"':
+                state = "code"
+            i += 1
+            continue
+
+        if state == "char":
+            if c == "\\":
+                out.append(src[i:i + 2])
+                i += 2
+                continue
+            out.append(c)
+            if c == "'":
+                state = "code"
+            i += 1
+            continue
+
+    return "".join(out)
+
+
 def strip_comments_and_strings(src):
     """把注释和字符串字面量替换成等长空白，保持字符偏移不变。
 
@@ -483,6 +578,64 @@ def check_files(paths):
                 fail("rewritePlaylist 在 token 为空时原样返回原文 —— 电视会直连源站卡死")
             else:
                 ok("rewritePlaylist 不会把未重写的列表当成功交付")
+
+        # (9) 读上游响应头**不得**假定 key 大小写。
+        #
+        # 这是"投屏后快进一直转圈"的头号原因，也是最隐蔽的一条：
+        #   NSHTTPURLResponse.allHeaderFields 的 key 大小写取决于协议：
+        #     HTTP/1.1 → 保留服务端原始大小写（"Content-Type"）
+        #     HTTP/2   → RFC 7540 §8.1.2 要求头名全小写（"content-type"）
+        #   原来写 allHeaderFields[@"Content-Range"]，走 HTTP/2 的源站
+        #   （现在绝大多数 CDN）读到 nil，于是 206 响应的 Content-Range
+        #   从来没有被转发给电视。
+        #
+        #   电视靠 Content-Range 确认"这段字节对应哪个时间点"，
+        #   缺了它就无法定位 → 一直缓冲 → 转圈。而手机 App 内拖动
+        #   走的是系统 AVPlayer、不经过这个代理，所以手机正常。
+        #
+        # ★ 同样必须查原文：判据要找的就是 @"大写" 字面量本身，
+        #   在 clean 上搜等于搜一个不存在的东西 —— 永远通过。
+        #   这条第一次写就踩了，属于"判据看着很严、实际恒真"。
+        proxy_raw_pre = None
+        for p in paths:
+            if p.endswith("KKProxy.m"):
+                with open(p, "r", encoding="utf-8") as f:
+                    proxy_raw_pre = f.read()
+        # ★ 必须用"剥注释但保留字符串"的视图：
+        #   - 用 clean（连字符串也抹掉）→ 搜不到，判据恒真（假绿）
+        #   - 用原文 → 注释里的错误示范会被当成违规（假红）
+        code_only = strip_comments_only(proxy_raw_pre or "")
+        bad_hdr = re.findall(
+            r"allHeaderFields\s*\[\s*@\"([A-Z][A-Za-z-]*)\"\s*\]",
+            code_only)
+        if bad_hdr:
+            fail(f"allHeaderFields 用大写 key 直接下标 {sorted(set(bad_hdr))} —— "
+                 f"HTTP/2 下取到 nil，Content-Range 会丢")
+        else:
+            ok("读上游响应头不使用大写 key 下标（不会因 HTTP/2 小写而丢头）")
+
+        # (10) Content-Range 必须真的被转发出去。
+        #
+        # ★ 这一条必须查**原文**，不能查剥离后的 clean。
+        #   `extra[@"Content-Range"]` 里的字符串字面量会被剥离器
+        #   抹成空格（这是它有意的行为，防注释/字符串干扰括号计数），
+        #   于是 clean 里这段变成 `extra[           ]`，判据永远找不到
+        #   —— 假 FAIL。同类错误我在"关键常量一致性"一节也踩过
+        #   （AVURLAssetHTTPHeaderFieldsKey）。
+        proxy_raw = proxy_raw_pre
+        if proxy_raw is None:
+            fail("读不到 KKProxy.m 原文")
+        else:
+            if re.search(r'extra\s*\[\s*@"Content-Range"\s*\]\s*=\s*cr', code_only):
+                ok("Content-Range 会被转发给电视（快进定位依赖它）")
+            else:
+                fail("没有转发 Content-Range —— 电视快进后无法定位，会一直转圈")
+
+        # (11) 播放列表缓冲必须有上限，否则误判会把整片读进内存 OOM。
+        if re.search(r"playlistBuf\.length\s*>", proxy_clean):
+            ok("playlistBuf 有上限保护（防误判 mpegurl 导致 OOM）")
+        else:
+            fail("playlistBuf 无上限 —— 上游误标 mpegurl 时整片进内存会 OOM")
 
     if FAIL:
         print()
