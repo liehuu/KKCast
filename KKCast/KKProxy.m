@@ -20,11 +20,79 @@
 #import <errno.h>
 #import <ifaddrs.h>
 #import <sys/select.h>
+#import <sys/time.h>
 
 /// 内存里最多缓存多大的上游响应。超过这个就走落盘 + 流式发送。
 /// 48MB 是权衡：ts 分片通常 1-5MB，远低于它；mp4 整片可能几百 MB，
 /// 一次性读进内存会在这台手机上直接 OOM 被系统杀掉。
 static const NSUInteger kInlineMaxBytes = 48 * 1024 * 1024;
+
+/// 一次写操作最多允许"零进展"多久（秒）。
+///
+/// 电视 seek 时播放器会 flush 缓冲区、重建 demuxer，期间可能几百毫秒
+/// 到几秒不读 socket，属于正常行为；但不会 45 秒一个字节都不收。
+/// 超过这个时长才认为对端确实不要了。
+static const NSTimeInterval kSendStallLimit = 45.0;
+
+static NSTimeInterval kk_now(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (NSTimeInterval)tv.tv_sec + (NSTimeInterval)tv.tv_usec / 1000000.0;
+}
+
+/// 尽力把 buf 的 len 字节写到 fd，返回**实际写出**的字节数。
+///
+/// 返回值 < len 表示对端确实不再接收，调用方应当收尾这条连接。
+///
+/// ── 为什么不能直接 send 完事（这是"快进后进度卡死"的头号原因）──
+///
+/// client fd 上设了 SO_SNDTIMEO。对端接收窗口满时 send 会阻塞到超时，
+/// 然后返回 -1 且 errno == EAGAIN。**EAGAIN 的语义是"现在写不进去"，
+/// 不是"对端不要了"**。原来的写法把所有 n <= 0 一律当成断开：
+///
+///   电视快进 → 播放器 flush buffer 暂停读几百毫秒
+///            → 我们的 send 超时返回 EAGAIN
+///            → 判定"电视断开" → close(client) + 取消上游任务
+///            → 电视侧数据流中断，进度条停在快进位置不动
+///
+/// 正确做法：EAGAIN 时用 select 等 socket 可写再重试，只在
+/// "长时间零进展"或"真错误（EPIPE / ECONNRESET）"时才放弃。
+/// 这样慢速客户端（电视缓冲小、WiFi 抖动）也能把整片推完。
+static size_t kk_send_all(int fd, const uint8_t *buf, size_t len) {
+    if (fd <= 0 || !buf || len == 0) return 0;
+
+    size_t sent = 0;
+    NSTimeInterval stallStart = 0;   // 0 表示当前不处于停滞状态
+
+    while (sent < len) {
+        ssize_t n = send(fd, buf + sent, len - sent, 0);
+        if (n > 0) {
+            sent += (size_t)n;
+            stallStart = 0;          // 有进展，清掉停滞计时
+            continue;
+        }
+        if (n < 0 && errno == EINTR) continue;
+
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            NSTimeInterval now = kk_now();
+            if (stallStart == 0) stallStart = now;
+            if (now - stallStart >= kSendStallLimit) {
+                KKLog(@"send 停滞 %.0fs 零进展，放弃 fd=%d（已写 %zu/%zu）",
+                      kSendStallLimit, fd, sent, len);
+                break;
+            }
+            // 等可写，最多 1 秒一片，回来重试并复查停滞时限
+            fd_set wfds;
+            FD_ZERO(&wfds);
+            FD_SET(fd, &wfds);
+            struct timeval tv = {1, 0};
+            select(fd + 1, NULL, &wfds, NULL, &tv);
+            continue;
+        }
+        break;   // EPIPE / ECONNRESET / 其他真错误
+    }
+    return sent;
+}
 
 /// 一条登记记录：代理 URL 里的 token → 真实地址 + 请求头
 @interface KKProxyEntry : NSObject
@@ -84,16 +152,23 @@ static const NSUInteger kInlineMaxBytes = 48 * 1024 * 1024;
 @property (nonatomic, assign) int client;
 @property (nonatomic, weak) KKProxyServer *owner;
 @property (nonatomic, copy) NSString *target;
+/// 请求自带的 token。重写子播放列表时必须用它，不能再靠
+/// tokenForEntryByAddress 反查（见 flushPlaylistWithCode 的说明）。
+@property (nonatomic, copy) NSString *token;
 @property (nonatomic, assign) BOOL headerSent;
 @property (nonatomic, assign) BOOL playlistMode;
+/// 防止重复 close 同一个 fd（见 closeClientOnce 的说明）
+@property (nonatomic, assign) BOOL clientClosed;
 @property (nonatomic, strong) NSMutableData *playlistBuf;
 - (instancetype)initWithRequest:(NSURLRequest *)req
                          client:(int)client
                           owner:(KKProxyServer *)owner
-                         target:(NSString *)target;
+                         target:(NSString *)target
+                          token:(NSString *)token;
 - (void)begin;
 - (void)finish;
 - (void)flushPlaylistWithCode:(NSInteger)code;
+- (void)closeClientOnce;
 @end
 
 @implementation KKProxyServer
@@ -202,6 +277,38 @@ static const NSUInteger kInlineMaxBytes = 48 * 1024 * 1024;
         int client = accept(fd, (struct sockaddr *)&cli, &clen);
         if (client < 0) continue;
 
+        // ★★ 必须给 accept 出来的 fd 单独设 SO_NOSIGPIPE ★★
+        //
+        // 这是"点投屏后容易闪退"的头号原因，而且极难查：
+        //   - 监听 fd 上设的 socket 选项**不会被 accept 的新 fd 继承**。
+        //     上面 startOnPort: 里那行 setsockopt(SO_NOSIGPIPE) 只作用于
+        //     监听 fd，对每个新连接无效。
+        //   - 电视的断连是常态：用户换台、拖进度、关电视、甚至 HLS
+        //     播放器主动断开旧连接去请求新分片，都会让对端先关。
+        //   - 对端已关时 send() 会触发 SIGPIPE。iOS 上 SIGPIPE 的默认
+        //     处置是**终止整个进程**，不抛 ObjC 异常、不写 crash log 的
+        //     业务栈 —— 用户看到的就是"点投屏，App 直接没了"，
+        //     而日志里只有上一条正常记录，看不出任何线索。
+        //   - 拖进度条时最密集（旧连接被频繁掐断），这也解释了为什么
+        //     "快进/换台"时更容易闪退。
+        int yes = 1;
+        setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &yes, sizeof(yes));
+
+        // 给 client 设收发超时，防止对端"半死不活"时永久阻塞。
+        //
+        // 场景：电视 seek 时可能保留 TCP 连接但不再读数据（缓冲区满），
+        // 或者发了残包就卡住。此时：
+        //   - recv 阻塞 → 这条串行队列永远不释放，连接泄漏
+        //   - send 阻塞 → didReceiveData 永不返回，NSURLSession 停止
+        //     收数据，上游 TCP 窗口打满
+        // 累积几条之后 GCD 线程被占满，整个 App 的网络一起卡死，
+        // 表现就是"进度条不动了"。
+        // 超时后 send/recv 返回 -1 + EAGAIN，走既有的失败分支清理。
+        struct timeval snd_to = {8, 0};     // 8 秒发不出去就认为对端不要了
+        struct timeval rcv_to = {15, 0};    // 15 秒收不到请求头就放弃
+        setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &snd_to, sizeof(snd_to));
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &rcv_to, sizeof(rcv_to));
+
         // 每个连接一条串行队列，避免同一连接的请求乱序
         dispatch_queue_t q = dispatch_queue_create("kkcast.proxy.conn", DISPATCH_QUEUE_SERIAL);
         dispatch_async(q, ^{
@@ -285,9 +392,22 @@ static const NSUInteger kInlineMaxBytes = 48 * 1024 * 1024;
         // 但为了容错读到 8KB。
         NSMutableData *head = [NSMutableData data];
         char buf[2048];
+        NSTimeInterval deadline = kk_now() + 15.0;
         while (head.length < 8192) {
             ssize_t n = recv(client, buf, sizeof(buf), 0);
-            if (n <= 0) break;
+            if (n < 0) {
+                // client fd 上有 SO_RCVTIMEO，对端发了半截头就卡住时
+                // recv 返回 -1/EAGAIN。原来直接 break 当成"没数据"，
+                // 已经收到的部分被丢掉；这里区分两种情况：
+                // 已经读到内容就继续尝试，完全没读到且超时则放弃。
+                if (errno == EINTR) continue;
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    if (head.length == 0 || kk_now() >= deadline) break;
+                    continue;
+                }
+                break;
+            }
+            if (n == 0) break;   // 对端正常关闭
             [head appendBytes:buf length:n];
             NSData *sep = [@"\r\n\r\n" dataUsingEncoding:NSASCIIStringEncoding];
             if ([head rangeOfData:sep options:0 range:NSMakeRange(0, head.length)].location != NSNotFound) {
@@ -357,7 +477,7 @@ static const NSUInteger kInlineMaxBytes = 48 * 1024 * 1024;
             }
         }
 
-        [self proxyRequest:client method:method reqHeaders:reqHeaders entry:entry target:target];
+        [self proxyRequest:client method:method reqHeaders:reqHeaders entry:entry target:target token:token];
     }
 }
 
@@ -365,10 +485,15 @@ static const NSUInteger kInlineMaxBytes = 48 * 1024 * 1024;
               method:(NSString *)method
           reqHeaders:(NSDictionary<NSString *, NSString *> *)reqHeaders
                entry:(KKProxyEntry *)entry
-              target:(NSString *)target {
+              target:(NSString *)target
+               token:(NSString *)token {
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:target]];
     req.HTTPMethod = method;
-    req.timeoutInterval = 15;
+    // 快进（seek）时电视会带 Range 从远处重新请求，源站要做切片定位、
+    // 有时还要回源转码，首字节比从头播慢得多。原来写死 15 秒，
+    // 源站稍慢就超时断流，表现正是"快进之后卡住不动"。
+    // 这里放宽到 30 秒；真正的卡死由 kk_send_all 的停滞检测兜住。
+    req.timeoutInterval = 30;
 
     // 先铺原始请求头（Referer / UA / Cookie…）
     for (NSString *k in entry.headers) {
@@ -402,8 +527,20 @@ static const NSUInteger kInlineMaxBytes = 48 * 1024 * 1024;
     KKProxyStreamer *s = [[KKProxyStreamer alloc] initWithRequest:req
                                                           client:client
                                                            owner:self
-                                                          target:target];
-    [self.streamers addObject:s];
+                                                          target:target
+                                                           token:token];
+    // ★ add 必须和 removeStreamer: 用同一把锁。
+    //
+    // 原来这里是无锁的 [_streamers addObject:s]，而删除那边用的是
+    // @synchronized(self)。两把不同的"锁"等于没有锁：
+    // NSMutableSet 在并发读写时会崩在 objc_msgSend / 内部哈希表重排，
+    // 崩溃栈看起来在系统库里，与我们的代码毫无关系，极难归因。
+    //
+    // 投屏时的并发量正好踩在这个窗口上：拖进度会让电视瞬间断开旧连接
+    // 并发起新连接，add 与 remove 几乎同时发生。
+    @synchronized (self) {
+        [_streamers addObject:s];
+    }
     [s begin];
 }
 
@@ -418,7 +555,12 @@ static const NSUInteger kInlineMaxBytes = 48 * 1024 * 1024;
                       baseURL:(NSString *)baseURL
                         token:(NSString *)token
                          port:(uint16_t)port {
-    if (!text.length || !token.length) return text ?: @"";
+    // 空 token 时返回空串（而不是原样返回 text）。
+    //
+    // 原写法 `return text ?: @""` 会把**未重写**的播放列表当成结果交出去：
+    // 里面全是原始分片地址，电视会直连源站，遇防盗链就静默卡死。
+    // 宁可明确失败（上层会回 502），也不要把错误数据当成功交付。
+    if (!text.length || !token.length) return @"";
 
     NSURL *base = [NSURL URLWithString:baseURL];
     NSString *host = [self localIPAddress];
@@ -512,15 +654,7 @@ static const NSUInteger kInlineMaxBytes = 48 * 1024 * 1024;
     NSMutableData *packet = [[h dataUsingEncoding:NSUTF8StringEncoding] mutableCopy];
     if (body.length) [packet appendData:body];
 
-    // 循环写，send 不保证一次写完（大分片尤其）
-    const uint8_t *bytes = packet.bytes;
-    NSUInteger total = packet.length;
-    NSUInteger sent = 0;
-    while (sent < total) {
-        ssize_t n = send(client, bytes + sent, total - sent, 0);
-        if (n <= 0) break;
-        sent += n;
-    }
+    kk_send_all(client, packet.bytes, packet.length);
     close(client);
 }
 
@@ -545,7 +679,22 @@ static const NSUInteger kInlineMaxBytes = 48 * 1024 * 1024;
     [h appendFormat:@"Content-Type: %@\r\n", type ?: @"application/octet-stream"];
     // 长度 0 表示未知：直接不发这个头，让客户端按连接关闭判断结束。
     // 发 "Content-Length: 0" 会让电视认为没有内容，直接报错。
-    if (length > 0) {
+    //
+    // ★ 判据是 `extra 里有没有 Content-Length`，不能用 `length > 0`。
+    //   原写法把"上游明确说了 0 字节"和"我们不知道长度"混成一件事：
+    //   空分片 / 204 / 空的 INIT 段上游会回 Content-Length: 0，
+    //   我们却当成未知长度，不发该头，电视就一直等连接关闭，
+    //   表现为"某个分片卡住、进度不走"。
+    BOOL lengthKnown = (length > 0);
+    if (!lengthKnown) {
+        for (NSString *k in extra) {
+            if ([k.lowercaseString isEqualToString:@"content-length"]) {
+                lengthKnown = YES;
+                break;
+            }
+        }
+    }
+    if (lengthKnown) {
         [h appendFormat:@"Content-Length: %lu\r\n", (unsigned long)length];
     }
     [h appendString:@"Access-Control-Allow-Origin: *\r\n"];
@@ -559,18 +708,17 @@ static const NSUInteger kInlineMaxBytes = 48 * 1024 * 1024;
     [h appendString:@"\r\n"];
 
     NSData *d = [h dataUsingEncoding:NSUTF8StringEncoding];
-    const uint8_t *bytes = d.bytes;
-    NSUInteger total = d.length;
-    NSUInteger sent = 0;
-    while (sent < total) {
-        ssize_t n = send(client, bytes + sent, total - sent, 0);
-        if (n <= 0) return;
-        sent += (NSUInteger)n;
-    }
+    kk_send_all(client, d.bytes, d.length);
 }
 
-/// 一次性发完整响应（含 body），发完关连接。
-/// 用于 m3u8 重写结果、错误页这类小响应。
+/// 一次性发完整响应（含 body），**不关连接**。
+///
+/// 关连接的责任统一交给 KKProxyStreamer 的 closeClientOnce：
+/// 原来这里自己 close(client)，随后 didCompleteWithError 又走
+/// closeClientOnce 关一次。dylib 的 _clientClosed 标志没被置位，
+/// 于是同一 fd 被关两次。fd 号在第一次 close 后立刻会被系统复用给
+/// 新连接（电视快进时会并发发起新请求），第二次 close 就把**别人的
+/// 连接**关掉了 —— 现象是"快进一下，投屏就再也连不上"。
 - (void)sendWholeResponse:(int)client
                      code:(NSInteger)code
                      type:(NSString *)type
@@ -592,15 +740,7 @@ static const NSUInteger kInlineMaxBytes = 48 * 1024 * 1024;
     NSMutableData *packet = [[h dataUsingEncoding:NSUTF8StringEncoding] mutableCopy];
     if (body.length) [packet appendData:body];
 
-    const uint8_t *bytes = packet.bytes;
-    NSUInteger total = packet.length;
-    NSUInteger sent = 0;
-    while (sent < total) {
-        ssize_t n = send(client, bytes + sent, total - sent, 0);
-        if (n <= 0) break;
-        sent += (NSUInteger)n;
-    }
-    close(client);
+    kk_send_all(client, packet.bytes, packet.length);
 }
 
 /// 按原始地址反查 token。
@@ -636,13 +776,17 @@ static const NSUInteger kInlineMaxBytes = 48 * 1024 * 1024;
 - (instancetype)initWithRequest:(NSURLRequest *)req
                          client:(int)client
                           owner:(KKProxyServer *)owner
-                         target:(NSString *)target {
+                         target:(NSString *)target
+                          token:(NSString *)token {
     if ((self = [super init])) {
         _client = client;
         _owner = owner;
         _target = [target copy];
+        _token = [token copy];
         _playlistBuf = [NSMutableData data];
         NSURLSessionConfiguration *c = [NSURLSessionConfiguration ephemeralSessionConfiguration];
+        // 单次请求等待首字节的时限。快进到远处时需要重新定位，
+        // 5 秒太紧，给 20 秒；整片下载另由 timeoutIntervalForResource 控制。
         c.timeoutIntervalForRequest = 20;
         // 整片下载可能很久，给 1 小时
         c.timeoutIntervalForResource = 3600;
@@ -661,6 +805,30 @@ static const NSUInteger kInlineMaxBytes = 48 * 1024 * 1024;
     [self.owner removeStreamer:self];
 }
 
+/// 关闭 client socket，且**只关一次**。
+///
+/// 为什么必须防重入：finish 有两条路径会走到
+///   1. didReceiveData 里 send 失败（电视断开）→ 直接 finish
+///   2. 之后 upstream 也结束 → didCompleteWithError → close(client)
+/// 两条都 close 同一个 fd。fd 号会被系统立刻复用给新连接，
+/// 第二次 close 就把**别的连接**关掉了。
+/// 现象是"拖一次进度，投屏就再也连不上了"，或另一路请求莫名 502。
+///
+/// 用 @synchronized 保护标志位：两个回调可能在不同线程
+/// （NSURLSession 的 delegate 队列 vs 我们自己的连接队列）。
+- (void)closeClientOnce {
+    BOOL needClose = NO;
+    @synchronized (self) {
+        if (!_clientClosed) {
+            _clientClosed = YES;
+            needClose = YES;
+        }
+    }
+    if (needClose && self.client > 0) {
+        close(self.client);
+    }
+}
+
 - (void)URLSession:(NSURLSession *)session
               task:(NSURLSessionTask *)task
 didCompleteWithError:(NSError *)error {
@@ -674,13 +842,17 @@ didCompleteWithError:(NSError *)error {
         if (!error && self.playlistBuf.length) {
             [self flushPlaylistWithCode:code];
         } else {
+            // 上游播放列表失败时的兜底错误页。
+            // 注意 sendWholeResponse 现在不关 fd，统一由下面的
+            // closeClientOnce 收尾，避免同一 fd 被关两次。
             [self.owner sendWholeResponse:self.client code:code ?: 502
                                      type:@"text/plain; charset=utf-8"
                                      body:[@"upstream playlist error" dataUsingEncoding:NSUTF8StringEncoding]];
         }
     }
 
-    close(self.client);
+    // 关连接统一在这里做，且只做一次。
+    [self closeClientOnce];
     [self finish];
 }
 
@@ -732,17 +904,22 @@ didReceiveResponse:(NSURLResponse *)response
     }
     if (!self.headerSent) return;
 
-    const uint8_t *bytes = data.bytes;
-    NSUInteger total = data.length;
-    NSUInteger sent = 0;
-    while (sent < total) {
-        ssize_t n = send(self.client, bytes + sent, total - sent, 0);
-        if (n <= 0) {
-            // 电视断开（用户换台/关电视）是常态，不是错误
-            [self finish];
-            return;
-        }
-        sent += (NSUInteger)n;
+    // kk_send_all 内部会把 SO_SNDTIMEO 的 EAGAIN 当作"暂时写不进去"
+    // 并等待重试，只有真断开（EPIPE/ECONNRESET）或 45 秒零进展才
+    // 返回不足量。这样电视快进时短暂不读 socket 不会误杀连接。
+    //
+    // 原写法 n <= 0 就判断开 → 快进触发 flush → send 超时 → 断流 →
+    // 进度条停在快进位置不动。这是问题 3 的直连原因。
+    size_t written = kk_send_all(self.client, data.bytes, data.length);
+    if (written < data.length) {
+        // 电视真的不要了（换台/关电视/超时）。
+        //
+        // headerSent 置 NO：NSURLSession 可能已经在队列里排了若干个
+        // didReceiveData 回调，它们随后仍会对关闭的 fd 反复 send。
+        // 置 NO 让那些回调直接 return。
+        self.headerSent = NO;
+        [self closeClientOnce];
+        [self finish];
     }
 }
 
@@ -758,11 +935,44 @@ didReceiveResponse:(NSURLResponse *)response
 - (void)flushPlaylistWithCode:(NSInteger)code {
     NSString *text = [[NSString alloc] initWithData:self.playlistBuf encoding:NSUTF8StringEncoding];
     if (!text) text = [[NSString alloc] initWithData:self.playlistBuf encoding:NSISOLatin1StringEncoding];
-    NSString *token = [self.owner tokenForEntryByAddress:self.target];
+
+    // ★ token 直接用请求路径里带过来的那个，不要反查。
+    //
+    // 原来这里是 tokenForEntryByAddress:self.target，靠"原始地址反查
+    // 登记表"来猜 token。但地址可能带会变的查询串（签名、时间戳、
+    // 防盗链 token），反查用 host 前缀匹配，遇到同域不同 token 就
+    // 猜错或猜空；猜空时 rewritePlaylist 会**原样返回**未重写的列表
+    // （里面是原始分片地址），电视按播放列表的 host 去直连分片，
+    // 照样 403/超时 —— 表现正是"拖动进度条之后卡住不动"。
+    //
+    // 请求路径 /p/<token>/... 里本来就带着 token，是权威来源。
+    NSString *token = self.token;
+    if (!token.length) {
+        token = [self.owner tokenForEntryByAddress:self.target];
+    }
+    if (!token.length) {
+        // 兜底也拿不到 token：绝不能回原始列表，那会让电视直连源站
+        // 然后静默卡死。明确报错，至少行为可预期、日志可归因。
+        KKLog(@"播放列表缺少 token，放弃重写: %@", self.target);
+        [self.owner sendWholeResponse:self.client
+                                 code:502
+                                 type:@"text/plain; charset=utf-8"
+                                 body:[@"playlist token lost" dataUsingEncoding:NSUTF8StringEncoding]];
+        return;
+    }
+
     NSString *rewritten = [self.owner rewritePlaylist:text
                                               baseURL:self.target
                                                 token:token
                                                  port:self.owner.port];
+    if (!rewritten.length) {
+        KKLog(@"播放列表重写结果为空: %@", self.target);
+        [self.owner sendWholeResponse:self.client
+                                 code:502
+                                 type:@"text/plain; charset=utf-8"
+                                 body:[@"playlist rewrite failed" dataUsingEncoding:NSUTF8StringEncoding]];
+        return;
+    }
     NSData *out = [rewritten dataUsingEncoding:NSUTF8StringEncoding];
     [self.owner sendWholeResponse:self.client
                              code:code == 0 ? 200 : code

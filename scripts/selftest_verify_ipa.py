@@ -31,6 +31,23 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+
+
+def exe_arc_of(ipa):
+    """从包里 Info.plist 的 CFBundleExecutable 精确定位主程序条目名。
+
+    不能按"斜杠数 + 无扩展名"猜：movie.app 下 Assets.car / Info.plist /
+    PkgInfo 深度一样，猜错就会拿 PNG 头去解 load command。
+    """
+    import plistlib
+    with zipfile.ZipFile(ipa) as z:
+        pl = [n for n in z.namelist()
+              if n.startswith("Payload/") and n.endswith("/Info.plist")]
+        if not pl:
+            raise SystemExit(f"{ipa} 里没有 Payload/*/Info.plist")
+        info = plistlib.loads(z.read(pl[0]))
+        app_arc = pl[0][: -len("/Info.plist")]
+        return f"{app_arc}/{info['CFBundleExecutable']}"
 VERIFY = os.path.join(HERE, "verify_ipa.py")
 PY = sys.executable
 
@@ -43,7 +60,16 @@ def rec(name, ok_, msg):
 
 
 def find_base():
-    for cand in ("dist/kkys-dlna.ipa", "dist-ci/kkys-dlna.ipa"):
+    """底包必须是**当前正确产出**的包，否则整组反向用例的基线是坏的。
+
+    旧顺序以 dist/kkys-dlna.ipa（v1，主程序 chained fixups 已损坏）打头，
+    结果 I1「基线应 PASS」永远红 —— 而那不是判据失效，是底包本身有缺陷。
+    现在优先取最新版本，并把 v1/v2 明确排除。
+    """
+    for cand in ("dist/kkys-dlna-v3.ipa",
+                 "dist/kkys-dlna-v2.ipa",
+                 "dist/kkys-dlna.ipa",
+                 "dist-ci/kkys-dlna.ipa"):
         p = os.path.join(ROOT, cand)
         if os.path.exists(p):
             return p
@@ -199,6 +225,53 @@ def main():
     print("\n--- I9 删掉 Assets.car ---")
     case("I9 缺 Assets.car", base,
          lambda n, d, i: None if n.endswith(".app/Assets.car") else (n, d, None))
+
+    # ── I10 / I11：回放"位移"这一类真实缺陷 ──────────────────────
+    #
+    # 上面 I1~I9 测的都是"结构/缺失"类缺陷。真正让三轮真机都闪退的
+    # 是**位移**类缺陷：结构完全合法、签名验得过、段不越界，但数据挪了。
+    # 没有这两条，G 段那组判据就没有反向证据，等于装饰。
+    #
+    # 做法：把 package 里某个 Mach-O 的 chained fixups 起点整体后移 16 字节，
+    # 模拟"插入式签名"的效果 —— dataoff 不改，内容错位。
+
+    def shift_fixups(raw, delta=16):
+        """把 chained fixups 之后的内容整体后移 delta，dataoff 不变。
+
+        复刻 v2 的病：插入 16 字节但不更新任何引用。
+        chained fixups 本身被推后，dyld 在原 dataoff 处读到零/错位数据。
+        """
+        sys.path.insert(0, HERE)
+        import inject_dylib as INJ
+        m = INJ.MachO(bytes(raw))
+        off = m.header_size
+        do = ds = None
+        for _ in range(m.ncmds):
+            if INJ.u32(raw, off) == 0x80000034:
+                do = INJ.u32(raw, off + 8)
+                ds = INJ.u32(raw, off + 12)
+                break
+            off += INJ.u32(raw, off + 4)
+        if do is None or do + delta > len(raw):
+            return raw
+        d = bytearray(raw)
+        # 在 do 处插入 delta 个零字节（不改任何 dataoff）
+        d[do:do] = b"\x00" * delta
+        return bytes(d)
+
+    print("\n--- I10 主程序 chained fixups 被位移（回放 v1/v2 类缺陷）---")
+    def i10_pack(n, d, i):
+        if n == exe_arc_of(base):
+            return n, shift_fixups(d), None
+        return n, d, None
+    case("I10 主程序位移", base, i10_pack)
+
+    print("\n--- I11 dylib chained fixups 被位移（回放 v2 的真实病）---")
+    def i11_pack(n, d, i):
+        if n.endswith(".dylib"):
+            return n, shift_fixups(d), None
+        return n, d, None
+    case("I11 dylib 位移", base, i11_pack)
 
     print()
     print("=" * 62)

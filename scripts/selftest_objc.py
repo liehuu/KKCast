@@ -106,9 +106,12 @@ def main():
 
         print("A. 大括号少一个（删掉 KKProxyServer 里某个方法的收尾 }）")
         # 用真实存在的片段：handleClient 的结尾
+        # 注意：这个锚点会随 proxyRequest: 的签名变化而失效，
+        # 失效时 case() 只会报 SKIP（不算失败），容易被忽视。
+        # 所以锚点取"方法调用 + 紧接的收尾 }"，不包含参数列表。
         case("A1 缺大括号", "KKProxy.m",
-             "        [self proxyRequest:client method:method reqHeaders:reqHeaders entry:entry target:target];\n    }",
-             "        [self proxyRequest:client method:method reqHeaders:reqHeaders entry:entry target:target];",
+             "entry:entry target:target token:token];\n    }",
+             "entry:entry target:target token:token];",
              expect_fail=True, expect_keyword="不配平")
 
         print("B. 圆括号多一个")
@@ -166,6 +169,68 @@ def main():
              'KKLog(@"proxy 已启动 0.0.0.0:%u", port);',
              'KKLog(@"proxy 已启动 http://0.0.0.0:%u // not a comment", port);',
              expect_fail=False)
+
+        # ── H 组：代理写 socket 的 6 条不变量，每条都要能变红 ──
+        #
+        # 这 6 条对应真机上已经发生过的两个现象：
+        #   "点投屏后容易闪退" / "电视快进后进度卡住不动"
+        # 每条都拿真实源码做定点破坏，确认门禁真的会报。
+
+        print("H1. 把裸 send 塞回 didReceiveData（快进卡死的老写法）")
+        case("H1 裸 send 回归", "KKProxy.m",
+             "    size_t written = kk_send_all(self.client, data.bytes, data.length);",
+             "    ssize_t _r = send(self.client, data.bytes, data.length, 0);\n"
+             "    size_t written = (_r < 0) ? 0 : (size_t)_r;",
+             expect_fail=True, expect_keyword="裸 send")
+
+        print("H2. 删掉 EAGAIN 识别（把超时当成断开）")
+        case("H2 不处理 EAGAIN", "KKProxy.m",
+             "if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {",
+             "if (0) {",
+             expect_fail=True, expect_keyword="EAGAIN")
+
+        print("H3. 让 sendWholeResponse 自己 close（double-close 回归）")
+        # 注入点必须唯一命中 sendWholeResponse。
+        # 早先用 `kk_send_all(client, packet.bytes, packet.length);\n}`,
+        # 但 sendResponse 结尾也是这两行，replace(count=1) 改的是
+        # sendResponse（在文件里靠前），sendWholeResponse 原封不动 ——
+        # 于是"注入成功但门禁没红"，看起来像判据坏了，其实是用例写错了。
+        case("H3 重复 close", "KKProxy.m",
+             "    if (body.length) [packet appendData:body];\n\n"
+             "    kk_send_all(client, packet.bytes, packet.length);\n}",
+             "    if (body.length) [packet appendData:body];\n\n"
+             "    kk_send_all(client, packet.bytes, packet.length);\n    close(client);\n}",
+             expect_fail=True, expect_keyword="close")
+
+        print("H4. 删掉 accept 后的 SO_NOSIGPIPE（闪退的老写法）")
+        case("H4 漏设 NOSIGPIPE", "KKProxy.m",
+             "setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &yes, sizeof(yes));",
+             "// setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &yes, sizeof(yes));",
+             expect_fail=True, expect_keyword="NOSIGPIPE")
+
+        print("H5. 把 _streamers 的 add 改成无锁（并发崩）")
+        case("H5 add 无锁", "KKProxy.m",
+             "    @synchronized (self) {\n        [_streamers addObject:s];\n    }",
+             "    [_streamers addObject:s];",
+             expect_fail=True, expect_keyword="add")
+
+        print("H6. 把 closeClientOnce 的调用全删掉（防重入失效）")
+        case("H6 不调 closeClientOnce", "KKProxy.m",
+             "    // 关连接统一在这里做，且只做一次。\n    [self closeClientOnce];\n    [self finish];",
+             "    // 关连接统一在这里做，且只做一次。\n    [self finish];",
+             expect_fail=False)   # 还有另一处调用点，全局仍有调用 → 不该红
+
+        print("H7. token 退回只靠反查（列表重写失败→卡流）")
+        case("H7 token 只靠反查", "KKProxy.m",
+             "    NSString *token = self.token;\n    if (!token.length) {",
+             "    NSString *token = nil;\n    if (!token.length) {",
+             expect_fail=True, expect_keyword="token")
+
+        print("H8. rewritePlaylist 在 token 空时原样返回原文")
+        case("H8 原样返回列表", "KKProxy.m",
+             "    if (!text.length || !token.length) return @\"\";",
+             "    if (!text.length || !token.length) return text ?: @\"\";",
+             expect_fail=True, expect_keyword="原样返回")
 
     finally:
         restore()

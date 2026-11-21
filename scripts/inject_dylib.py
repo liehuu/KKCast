@@ -178,7 +178,13 @@ def build_dylib_cmd(path, timestamp=2):
 
 
 def inject_inplace(macho, dylib_path):
-    """策略 A：把 LC_LOAD_DYLIB 写进现有零填充，不移动任何数据。"""
+    """策略 A：把 LC_LOAD_DYLIB 写进现有零填充，不移动任何数据。
+
+    ★ 与 strip_codesig 同一条铁律：绝不 insert，只覆盖零填充。
+      任何"在文件中间插入字节"的操作都会让其后所有内容位移，
+      而段的 fileoff 与各 dataoff 不会跟着改 —— dyld 读到错位数据，
+      启动即崩。这条约束比"能不能塞下"重要得多。
+    """
     avail, sec = macho.slack()
     if not macho.slack_all_zero():
         raise SystemExit(
@@ -192,7 +198,7 @@ def inject_inplace(macho, dylib_path):
     if need > avail:
         raise SystemExit(f"空隙不足（需 {need}，仅 {avail}），需要走策略 B（本次未实现）")
 
-    # 1. 写 load command 到 cmds_end
+    # 1. 覆盖写入 load command（不 insert，长度不变）
     start = macho.cmds_end
     macho.data[start:start + need] = cmd
 
@@ -206,61 +212,87 @@ def inject_inplace(macho, dylib_path):
 
 
 def strip_codesig(macho):
-    """删掉 LC_CODE_SIGNATURE 命令本身，并把 __LINKEDIT.filesize 收缩到签名前。
+    """删掉 LC_CODE_SIGNATURE 命令本身，**但不移动任何被引用的字节**。
 
-    不删的后果：新插入的 load command 让 CS_CodeDirectory 里记录的
-    codeLimit（被签名覆盖的文件长度）与实际不符，设备校验直接拒装。
-    重签时会重新生成，所以这里删掉是正确做法。
+    ★ v1 的致命错误（真机"出现进入画面就闪退"的真正根因）：
+      旧实现 `del macho.data[off:off+cmdsize]` 把 16 字节命令从文件中间
+      抠掉，导致其后**所有字节整体前移 16**，而段的 fileoff 与各 load
+      command 里的 dataoff（CHAINED_FIXUPS / EXPORTS_TRIE / SYMTAB /
+      FUNCTION_STARTS）全都没跟着改。
+
+      实测 movie.orig → movie.patched：
+        __TEXT 首节      16384   → 16368   (-16)
+        __DATA_CONST   9977856  → 9977840 (-16)
+        __DATA        10354688  → 10354672 (-16)
+        __LINKEDIT    10780672  → 10780656 (-16)
+      而 LC_DYLD_CHAINED_FIXUPS.dataoff 仍写 10780672。
+      dyld 到位移后的错误位置读 header，得到
+        (3249, 1, 0, 0, 5, 0, 0)   ← 应该是 (0, 32, 204, 13200, 3249, 1, 0)
+      imports_format=0 非法，绑定阶段 abort。
+      表现就是"看到启动画面，随即闪退"—— 和签名问题外观完全一样，
+      所以前两轮修签名都没修对地方。
+
+    ★ 正确做法：只在 load command 区内左移，尾部零填充。
+      load command 区（32..lc_end）不承载任何"被 dataoff 引用"的数据，
+      而 lc_end 之后到首个 section 之间是链接器留的零填充。
+      所以：把 [end, lc_end) 左移 cmdsize，末尾补零，ncmds/sizeofcmds 各减。
+      文件长度不变 → 所有 fileoff/dataoff 继续有效。
     """
     hits = macho.find_cmd_offsets(LC_CODE_SIGNATURE)
     if not hits:
         print("  没有 LC_CODE_SIGNATURE，跳过")
         return macho.data, 0
 
-    total_removed = 0
     dataoff = datasz = None
-    # 从后往前删，避免偏移失效
+    for off, cmdsize in hits:
+        dataoff = u32(macho.data, off + 8)
+        datasz = u32(macho.data, off + 12)
+
+    lc_end = macho.header_size + macho.sizeofcmds
+    total_removed = 0
+    # 从后往前处理，前面 cmd 的偏移不受影响；lc_end 逐次收缩
     for off, cmdsize in sorted(hits, reverse=True):
-        if off + 16 <= len(macho.data):
-            dataoff = u32(macho.data, off + 8)
-            datasz = u32(macho.data, off + 12)
-        del macho.data[off:off + cmdsize]
+        tail_start = off + cmdsize
+        if tail_start > lc_end:
+            raise SystemExit(f"LC_CODE_SIGNATURE 越出 cmds 区: {off}+{cmdsize} > {lc_end}")
+        # [tail_start, lc_end) 整体左移 cmdsize
+        macho.data[off:lc_end - cmdsize] = macho.data[tail_start:lc_end]
+        # 尾部补零（落回原来的零填充区，不碰任何 section）
+        macho.data[lc_end - cmdsize:lc_end] = b"\x00" * cmdsize
+        lc_end -= cmdsize
         total_removed += cmdsize
 
     # ncmds 减、sizeofcmds 减
-    n = u32(macho.data, 16) - len(hits)
-    s = u32(macho.data, 20) - total_removed
-    macho.data[16:20] = p32(n)
-    macho.data[20:24] = p32(s)
+    macho.data[16:20] = p32(u32(macho.data, 16) - len(hits))
+    macho.data[20:24] = p32(u32(macho.data, 20) - total_removed)
 
-    print(f"  删除 LC_CODE_SIGNATURE {len(hits)} 条（{total_removed} 字节），"
+    print(f"  删除 LC_CODE_SIGNATURE {len(hits)} 条（{total_removed} 字节，"
+          f"仅左移 cmds 区并零填充，文件长度不变），"
           f"dataoff=0x{dataoff:x} datasize={datasz}")
 
-    # __LINKEDIT 收尾：签名数据被丢弃，filesize 缩到 dataoff
+    # __LINKEDIT 收尾：旧签名 blob 在文件尾部，截掉它。
+    # 只截 [dataoff, EOF)，不移动任何前面的字节，所以 fileoff 全部仍有效。
     if dataoff:
         le = macho.linkedit_seg()
         le_end = le["fileoff"] + le["filesize"]
-
-        # 关键保护：只有当签名确实位于 __LINKEDIT 的**最末端**时，
-        # 才能安全地把 filesize 收缩到 dataoff 并截断文件。
-        # 如果签名之后还有别的数据（符号表、字符串表等），
-        # 无条件收缩会把那些数据一起丢掉——链接器读不到符号表，
-        # dyld 起不来，表现为"装上去点开就闪退"。
         sig_end = dataoff + (datasz or 0)
-        slack = le_end - sig_end
 
-        if slack > 0:
-            # 签名后面还有数据，不能截断。只把签名区域保留原样
-            # （重签会覆盖它），filesize 保持不动。
-            print(f"  ⚠️  签名后仍有 {slack} 字节数据，不收缩 __LINKEDIT"
-                  f"（保留原 filesize 0x{le['filesize']:x}，避免截掉符号表）")
+        if sig_end != le_end:
+            # 签名后面还有别的数据（符号表等）。只把 filesize 收到 dataoff，
+            # 不截断文件，避免丢掉数据。
+            new_size = dataoff - le["fileoff"]
+            if 0 < new_size <= le["filesize"]:
+                macho.data[le["cmd_off"] + 48:le["cmd_off"] + 56] = p64(new_size)
+                print(f"  __LINKEDIT.filesize 0x{le['filesize']:x} → 0x{new_size:x}"
+                      f"（签名后仍有 {le_end - sig_end} 字节数据，不截断）")
         else:
             new_size = dataoff - le["fileoff"]
-            if new_size > 0 and new_size <= le["filesize"]:
+            if 0 < new_size <= le["filesize"]:
                 macho.data[le["cmd_off"] + 48:le["cmd_off"] + 56] = p64(new_size)
-                print(f"  __LINKEDIT.filesize 0x{le['filesize']:x} → 0x{new_size:x}")
+                before = len(macho.data)
                 macho.data = macho.data[:dataoff]
-                print(f"  文件截断到 0x{dataoff:x}（{dataoff} 字节）")
+                print(f"  __LINKEDIT.filesize 0x{le['filesize']:x} → 0x{new_size:x}，"
+                      f"截掉尾部旧签名 {before - dataoff} 字节（前面字节未移动）")
 
     return macho.data, total_removed
 

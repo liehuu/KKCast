@@ -25,11 +25,13 @@ import struct
 import subprocess
 import sys
 import zipfile
+import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import inject_dylib  # noqa: E402
+import adhoc_sign  # noqa: E402
 
 
 def log(msg):
@@ -146,6 +148,33 @@ def remove_codesig(app_dir):
         log("已删除 _CodeSignature（旧签名对改动后的内容无效）")
 
 
+def sign_machos(app_dir, exe_name):
+    """给注入后的主程序和 dylib 做 ad-hoc 签名（ldid -S 等价）。
+
+    为什么必须做：
+      TrollStore 只绕过安装期证书链校验，dyld 加载每个 image 时仍校验
+      cdhash。裸 Mach-O（既无 LC_CODE_SIGNATURE 也无签名 blob）装上去
+      点开就 abort。实测 kkys-dlna.ipa 的两个 Mach-O 都是裸的。
+
+    顺序：dylib 先、主程序后；两者互不依赖，但签名必须发生在注入之后、
+    重打包之前。签名器自身带 page hash 全量复核，这里再复核一次。
+    """
+    targets = [
+        (os.path.join(app_dir, "Frameworks", "KKCast.dylib"), "KKCast.dylib"),
+        (os.path.join(app_dir, exe_name), exe_name),
+    ]
+    for path, ident in targets:
+        if not os.path.isfile(path):
+            raise SystemExit(f"签名目标不存在：{path}")
+        changed, blob = adhoc_sign.sign_file(path, ident)
+        with open(path, "rb") as f:
+            data = f.read()
+        ok, msg = adhoc_sign.verify_signature(data)
+        if not ok:
+            raise SystemExit(f"签名后复核失败 {path}: {msg}")
+        log(f"签名 {path}（{'新签' if changed else '已签过'}, blob={blob} 字节）✓")
+
+
 def repack(unpacked, out_ipa, src_ipa=None):
     """重打包成 ipa。
 
@@ -190,12 +219,29 @@ def repack(unpacked, out_ipa, src_ipa=None):
         return False
 
     written = 0
+    # ★ IPA 顶层白名单：只打规范允许的条目。
+    #
+    # 解包目录里可能混入排查用的中间产物 —— 本次实测 kkys_work/ 里有
+    # movie.orig / movie.patched 两份 11MB 的主程序副本和 mp.plist。
+    # 整目录递归会把它们一起装进 App：体积 12MB→34MB，而且往 App 里
+    # 塞了不该存在的文件。用白名单而不是黑名单，因为黑名单永远漏。
+    ALLOWED_TOP = {"Payload", "SwiftSupport", "Symbols", "iTunesMetadata.plist",
+                   "iTunesArtwork", "iTunesArtwork@2x", "AssetCatalog.car"}
+
+    def allowed(rel):
+        if not rel:
+            return True
+        return rel.split("/")[0] in ALLOWED_TOP
+
     with zipfile.ZipFile(out_ipa, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         # 先补目录条目。原包有就原样继承，没有就按 0o755 造。
         dirs = set()
         for dirpath, dirnames, filenames in os.walk(unpacked):
             rel = os.path.relpath(dirpath, unpacked).replace(os.sep, "/")
             if rel == ".":
+                continue
+            if not allowed(rel):
+                dirnames[:] = []
                 continue
             dirs.add(rel + "/")
         # 原包里出现过的目录（包括空的）也补上。
@@ -225,9 +271,15 @@ def repack(unpacked, out_ipa, src_ipa=None):
             written += 1
 
         for dirpath, dirnames, filenames in os.walk(unpacked):
+            rel_dir = os.path.relpath(dirpath, unpacked).replace(os.sep, "/")
+            if rel_dir != "." and not allowed(rel_dir):
+                dirnames[:] = []
+                continue
             for fn in sorted(filenames):
                 full = os.path.join(dirpath, fn)
                 arc = os.path.relpath(full, unpacked).replace(os.sep, "/")
+                if not allowed(arc):
+                    continue
 
                 if arc in meta:
                     ext, ctype = meta[arc]
@@ -241,10 +293,25 @@ def repack(unpacked, out_ipa, src_ipa=None):
                 zi = zipfile.ZipInfo(arc)
                 with open(full, "rb") as f:
                     data = f.read()
-                # 已签名/已压缩的大二进制用 STORED，其余 DEFLATED
-                zi.compress_type = (zipfile.ZIP_STORED
-                                    if ctype == zipfile.ZIP_STORED
-                                    else zipfile.ZIP_DEFLATED)
+
+                # ★ 压缩方式实测决定，不继承原包、不按类型猜。
+                #
+                # 原来写的是"继承原条目的 compress_type"，而我的原始包
+                # 又是另一个打包脚本产的，两处任何一处判错都会让最终包
+                # 翻倍（实测：movie 11441688 字节 STORED vs DEFLATE 后
+                # 4590624 字节，差 7MB）。用户反馈"文件比原来大了一倍"
+                # 就是这么来的。
+                #
+                # 现在直接压一遍比大小：变小就用 DEFLATE，没变小
+                # （PNG/JPEG/Assets.car 这类已压缩容器）就用 STORED。
+                # 判据是产出物实测量，不依赖任何上游假设。
+                if data:
+                    if len(zlib.compress(data, 6)) < len(data):
+                        zi.compress_type = zipfile.ZIP_DEFLATED
+                    else:
+                        zi.compress_type = zipfile.ZIP_STORED
+                else:
+                    zi.compress_type = zipfile.ZIP_STORED
                 zi.external_attr = ext
                 zi.create_system = 3
                 zi.date_time = (2020, 1, 1, 0, 0, 0)
@@ -292,13 +359,32 @@ def main():
     print("[5] 清理旧签名")
     remove_codesig(app_dir)
 
-    print("[6] 打包")
+    print("[6] ad-hoc 签名（ldid -S 等价）")
+    with open(os.path.join(app_dir, "Info.plist"), "rb") as f:
+        exe_name = plistlib.load(f).get("CFBundleExecutable")
+    if not exe_name:
+        raise SystemExit("Info.plist 里没有 CFBundleExecutable，无法签名")
+    sign_machos(app_dir, exe_name)
+
+    print("[7] 打包")
     repack(work, args.output, src_ipa=args.ipa)
 
     # 自检：新 ipa 里必须有 dylib 和那条 load command
-    print("[7] 自检")
+    print("[8] 自检")
     with zipfile.ZipFile(args.output) as z:
         names = z.namelist()
+
+        # 门禁：包内不得出现 IPA 规范之外的顶层条目。
+        # 实测漏过一次：解包目录里留着 movie.orig / movie.patched，
+        # 整目录打包把它们塞进了 App 包（体积翻倍 + 多余文件）。
+        stray = sorted({n.split("/")[0] for n in names
+                        if n.split("/")[0] not in
+                        {"Payload", "SwiftSupport", "Symbols", "iTunesMetadata.plist",
+                         "iTunesArtwork", "iTunesArtwork@2x", "AssetCatalog.car"}})
+        if stray:
+            raise SystemExit(f"❌ 包内出现非法顶层条目: {stray}")
+        log(f"顶层条目合法，共 {len(names)} 个条目")
+
         has_dylib = any(n.endswith("Frameworks/KKCast.dylib") for n in names)
         log(f"dylib 在包里: {has_dylib}")
         if not has_dylib:
